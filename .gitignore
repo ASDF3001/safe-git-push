@@ -1,0 +1,29 @@
+# Secrets / tokens - NEVER commit these
+.env
+.env.*
+*.env
+githubtoken.env
+token.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# AI agent logs / configs
+.roo/
+.aider/
+.qwen/
+.cursor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
