@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 # スクリプトバージョン（self-update で使用）
-SCRIPT_VERSION = "1.2.1"
+SCRIPT_VERSION = "1.2.2"
 # 自分自身を更新する際の raw URL（linux / windows で上書きされる）
 SELF_UPDATE_RAW_URL = "https://raw.githubusercontent.com/ASDF3001/safe-git-push/main/windows/safe_git_push.py"
 
@@ -402,6 +402,8 @@ def load_config(project_dir: Path, t: Dict[str, str]) -> Dict[str, object]:
         return defaults
     try:
         data = _load_toml_file(cfg_path, t) or {}
+        # プロジェクトの token は無視（平文保存を防ぐ。グローバル設定のみ有効）
+        data.pop("token", None)
         # グローバル設定 (~/.config/gitpush.toml) をマージ（プロジェクト優先）
         global_cfg = _load_toml_file(Path.home() / ".config" / "gitpush.toml", t)
         merged = dict(defaults)
@@ -439,41 +441,47 @@ CONFIG_SCHEMA: Dict[str, Dict[str, object]] = {
 
 
 def get_token(cfg: Dict[str, object], t: Dict[str, str], interactive: bool = True) -> str:
-    """GitHub トークンを取得する。常に対話で入力を促す（環境変数/保存値は使わない）。"""
+    """GitHub トークンを取得する。毎回入力を促し、空エンターならグローバル保存値を使う。
+    トークンは ~/.config/gitpush.toml のみに保存（プロジェクトには書かない）。"""
     if not interactive:
         print_warning(t["token_empty_skip"])
         return ""
 
+    saved = cfg.get("token", "")
     print_divider()
     print(f"{Neon.TITLE}  {t['token_setup_title']}{Neon.RESET}")
     print_info(t["token_setup_detail"])
     print_info(t["token_perm_recommend"])
     while True:
-        tok = prompt_input(t["token_input_prompt"], "")
+        tok = prompt_input(t["token_input_prompt"], saved if saved else "")
         if not tok:
+            if saved:
+                return saved
             print_warning(t["token_empty_skip"])
             return ""
         # ざっくり検証: ghp_ / github_pat_ / その他40桁前後の英数字
         if not re.match(r"^(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|[A-Za-z0-9_-]{20,})$", tok):
             print_warning(t["token_invalid"])
             continue
-        # 保存（プロジェクトの gitpush.toml に追記/上書き）
-        _save_token_to_config(cfg, tok, t)
+        # 保存（グローバル設定 ~/.config/gitpush.toml のみ。プロジェクトには書かない）
+        if tok != saved:
+            _save_token_to_config(cfg, tok, t)
         return tok
 
 
 def _save_token_to_config(cfg: Dict[str, object], tok: str, t: Dict[str, str]) -> None:
-    """トークンをプロジェクトの gitpush.toml に保存する。"""
+    """トークンをグローバル設定 (~/.config/gitpush.toml) のみに保存する。
+    プロジェクトの gitpush.toml には書かない（pre-commit フックに検出されるため）。"""
     try:
-        project_dir = Path.cwd()
-        cfg_path = project_dir / "gitpush.toml"
+        global_path = Path.home() / ".config" / "gitpush.toml"
+        global_path.parent.mkdir(parents=True, exist_ok=True)
         lines = []
-        if cfg_path.exists():
-            lines = cfg_path.read_text(encoding="utf-8").splitlines()
+        if global_path.exists():
+            lines = global_path.read_text(encoding="utf-8").splitlines()
         # 既存の token = 行を除去
         lines = [ln for ln in lines if not ln.strip().startswith("token")]
         lines.append(f'token = "{tok}"')
-        cfg_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        global_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         cfg["token"] = tok
         print_success(t["token_saved"])
     except Exception:
