@@ -102,6 +102,7 @@ TEXTS = {
         "config_not_found": "設定ファイルが見つかりません（デフォルトを使用）",
         "config_error": "設定ファイルの読み込みに失敗しました（デフォルトを使用）",
         "config_validated": "設定値の検証に通過しました",
+        "config_global_loaded": "グローバル設定を適用しました (~/.config/gitpush.toml)",
         "config_unknown_key": "警告: 不明な設定キーを無視しました:",
         "config_bad_type": "警告: 設定の型が不正です:",
         "config_bad_value": "警告: 設定値が取り得ない値です:",
@@ -137,6 +138,10 @@ TEXTS = {
         "token_invalid": "警告: トークンの形式が不正です（ghp_ 等で始まるはず）",
         "token_from_env": "環境変数からトークンを読み込みました",
         "token_empty_skip": "トークンが無いので、URL を手動入力します",
+        "repo_list_title": "既存のリポジトリ一覧（数字で選択 / 0 で新規作成 / q で終了）",
+        "repo_list_empty": "既存リポジトリが見つかりません（0 で新規作成）",
+        "repo_list_failed": "リポジトリ一覧の取得に失敗しました（新規作成または URL 手入力）",
+        "menu_select_quit": "q で終了",
     },
     "en": {
         "title": "Welcome to Safe Git Push!",
@@ -179,6 +184,7 @@ TEXTS = {
         "config_not_found": "Config file not found (using defaults)",
         "config_error": "Failed to load config (using defaults)",
         "config_validated": "Config values validated",
+        "config_global_loaded": "Global config applied (~/.config/gitpush.toml)",
         "config_unknown_key": "Warning: unknown config key ignored:",
         "config_bad_type": "Warning: config value has wrong type:",
         "config_bad_value": "Warning: config value is not allowed:",
@@ -214,6 +220,10 @@ TEXTS = {
         "token_invalid": "Warning: token format looks wrong (should start with ghp_ etc.)",
         "token_from_env": "Loaded token from environment variable",
         "token_empty_skip": "No token given, will ask for URL manually",
+        "repo_list_title": "Existing repositories (pick by number / 0 for new / q to quit):",
+        "repo_list_empty": "No existing repos found (0 to create new)",
+        "repo_list_failed": "Failed to list repos (create new or enter URL manually)",
+        "menu_select_quit": "q to quit",
     }
 }
 
@@ -246,7 +256,7 @@ def print_title(t: Dict[str, str], lang: str):
 
 
 def print_step(msg: str):
-    print(f"{Neon.INFO}> {msg}{Neon.RESET}")
+    print(f"{Neon.INFO}┌─ {msg}{Neon.RESET}")
 
 
 def print_success(msg: str):
@@ -299,6 +309,35 @@ def press_enter_to_exit(t: Dict[str, str]):
         input(f"{Neon.INFO}{t['press_enter']}{Neon.RESET}")
     except (EOFError, KeyboardInterrupt):
         pass
+
+
+def menu_select(options: List[str], default_idx: int = 0, title: str = "",
+                t: Dict[str, str] = None, allow_quit: bool = True) -> Optional[int]:
+    """番号選択メニュー。q で終了 (None を返す)。`q` は y/N プロンプトや
+    自由入力には影響しない（干渉回避のため、このメニュー専用）。"""
+    if not options:
+        return None
+    if title:
+        print_divider(thin=True)
+        print(f"{Neon.PROMPT}{title}{Neon.RESET}")
+    for i, opt in enumerate(options, 1):
+        marker = Neon.SUCCESS + "▶ " if (default_idx and i == default_idx) else Neon.INFO + "  "
+        print(f"  {marker}{i}. {opt}{Neon.RESET}")
+    if allow_quit:
+        print(f"  {Neon.WARNING}  q. {t['menu_select_quit'] if t else 'quit'}{Neon.RESET}")
+    while True:
+        if default_idx:
+            choice = prompt_input("Choice / 選択", str(default_idx))
+        else:
+            choice = prompt_input("Choice / 選択", "")
+        if allow_quit and choice.lower() == "q":
+            return None
+        if not choice and default_idx:
+            return default_idx
+        if choice.isdigit() and 1 <= int(choice) <= len(options):
+            return int(choice)
+        print_warning("Please enter 1-{0}{1}".format(
+            len(options), " or q" if allow_quit else ""))
 
 
 def run_command(cmd: List[str], cwd: Optional[Path] = None, capture: bool = False) -> Tuple[int, str, str]:
@@ -551,7 +590,7 @@ def scan_secret_literals(project_dir: Path, t: Dict[str, str]) -> bool:
     if len(hits) > 10:
         print_warning(f"  ... and {len(hits) - 10} more")
     print_warning(t["secret_in_code_detail"])
-    return prompt_yes_no(t["push_confirm"], default_no=True)
+    return False
 
 
 def scan_secret_files(project_dir: Path, t: Dict[str, str]) -> bool:
@@ -571,10 +610,10 @@ def scan_secret_files(project_dir: Path, t: Dict[str, str]) -> bool:
     for h in hits:
         print_warning(h)
     print_warning(t["secret_file_detail"])
-    return prompt_yes_no(t["push_confirm"], default_no=True)
+    return False
 
 
-def check_gitignore_gap(project_dir: Path, t: Dict[str, str]) -> None:
+def check_gitignore_gap(project_dir: Path, t: Dict[str, str], non_interactive: bool = False) -> None:
     """既存 .gitignore に機密パターンが足りなければ追記を提案。"""
     gitignore_path = project_dir / ".gitignore"
     if not gitignore_path.exists():
@@ -585,7 +624,7 @@ def check_gitignore_gap(project_dir: Path, t: Dict[str, str]) -> None:
     if not missing:
         return
     print_warning(t["gitignore_gap"])
-    if not prompt_yes_no("Continue / 続行", default_no=True):
+    if not non_interactive and not prompt_yes_no("Continue / 続行", default_no=True):
         return
     with open(gitignore_path, "a", encoding="utf-8") as f:
         f.write("\n# Added by Safe Git Push\n")
@@ -910,6 +949,40 @@ def init_git_repo(project_dir: Path, t: Dict[str, str]) -> bool:
     return True
 
 
+def list_repos(token: str, t: Dict[str, str]) -> list:
+    """GitHub API で既存リポジトリ一覧を取得（token が必要）。"""
+    if not token:
+        return []
+    import urllib.request
+    import json
+    try:
+        req = urllib.request.Request(
+            "https://api.github.com/user/repos?per_page=100&sort=updated",
+            headers={"Authorization": f"token {token}", "Accept": "application/vnd.github+json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return [r.get("name", "") for r in data if r.get("name")]
+    except Exception:
+        return []
+
+
+def select_repo(token: str, t: Dict[str, str]) -> str:
+    """既存リポジトリ一覧から数字で選択 / 0 で新規作成 / q で終了。"""
+    repos = list_repos(token, t)
+    if not repos:
+        print_info(t["repo_list_empty"])
+        return ""
+    options = list(repos) + ["(new / 新規作成)"]
+    idx = menu_select(options, default_idx=0,
+                      title=t["repo_list_title"], t=t, allow_quit=True)
+    if idx is None:
+        sys.exit(0)
+    if idx == len(repos) + 1:
+        return ""
+    return repos[idx - 1]
+
+
 def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict[str, str], provider: str = "github", token: str = "") -> Optional[str]:
     """リポジトリを自動作成（github: gh / gitlab: glab）。成功時は remote URL、失敗時は None。"""
     visibility = "private" if private else "public"
@@ -939,13 +1012,21 @@ def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict
         print_warning(t["gh_missing"])
         return None
 
-    # token があれば gh 認証チェックをスキップ（gh は GITHUB_TOKEN を自動使用）
-    if not token:
-        auth_code, _, _ = run_command(["gh", "auth", "status"], capture=True)
-        if auth_code != 0:
-            print_warning(t["gh_not_authed"])
-            print_info("  gh auth login")
-            return None
+    # 同名リポジトリが既に存在するか確認
+    view_code, view_out, _ = run_command(
+        ["gh", "repo", "view", repo_name, "--json", "url"], cwd=project_dir, capture=True
+    )
+    if view_code == 0 and "url" in view_out:
+        print_warning(t["repo_exists"])
+        if prompt_yes_no(t["push_confirm"], default_no=True):
+            # 既存リポの URL を origin に設定
+            import re as _re
+            m = _re.search(r'"url"\s*:\s*"([^"]+)"', view_out)
+            existing_url = m.group(1) if m else f"https://github.com/{repo_name}"
+            run_command(["git", "remote", "add", "origin", existing_url], cwd=project_dir)
+            print_success(t["repo_exists_url"] + existing_url)
+            return _maybe_ssh(existing_url, project_dir, t)
+        # 使わない場合は新規作成へ
 
     print_step(t["repo_creating"])
     vis_flag = "--private" if private else "--public"
@@ -963,11 +1044,30 @@ def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict
     # remote の URL を取得
     code, out, _ = run_command(["git", "remote", "get-url", "origin"], cwd=project_dir, capture=True)
     if code == 0 and out.strip():
-        print_success(t["repo_created"])
-        return out.strip()
+        url = out.strip()
+        print_success(t["repo_created_url"] + url)
+        return _maybe_ssh(url, project_dir, t)
 
     print_warning(t["repo_create_failed"])
     return None
+
+
+def _maybe_ssh(url: str, project_dir: Path, t: Dict[str, str]) -> str:
+    """HTTPS / SSH の選択。SSH を選んだら remote URL を書き換える。"""
+    idx = menu_select(t["repo_url_style_options"], default_idx=1,
+                      title=t["repo_url_style"], t=t, allow_quit=True)
+    if idx is None:
+        sys.exit(0)
+    if idx == 2:
+        # https://github.com/user/repo.git -> git@github.com:user/repo.git
+        import re
+        m = re.match(r"https://github\.com/([^/]+)/(.+?)(?:\.git)?$", url)
+        if m:
+            ssh_url = f"git@{m.group(1)}:{m.group(2)}.git"
+            run_command(["git", "remote", "set-url", "origin", ssh_url], cwd=project_dir)
+            print_success(f"Remote set to SSH: {ssh_url}")
+            return ssh_url
+    return url
 
 
 def setup_git_remote(project_dir: Path, repo_url: str, t: Dict[str, str]) -> bool:
@@ -1071,18 +1171,11 @@ def select_language() -> str:
     print_divider()
     print(f"{Neon.TITLE}  Safe Git Push - Language Selection{Neon.RESET}")
     print_divider()
-    print(f"{Neon.PROMPT}Select language / 言語を選択してください:{Neon.RESET}")
-    print(f"  {Neon.INFO}1. 日本語{Neon.RESET}")
-    print(f"  {Neon.INFO}2. English{Neon.RESET}")
-    print_divider(thin=True)
-
-    while True:
-        choice = prompt_input("Choice / 選択 [1-2]", "1")
-        if choice in ("1", "ja", "japanese", "日本語"):
-            return "ja"
-        elif choice in ("2", "en", "english"):
-            return "en"
-        print_warning("Please enter 1 or 2 / 1 または 2 を入力してください")
+    idx = menu_select(["日本語", "English"], default_idx=1,
+                      title="Select language / 言語を選択", t=TEXTS["ja"], allow_quit=True)
+    if idx is None:
+        sys.exit(0)
+    return "ja" if idx == 1 else "en"
 
 
 def main():
@@ -1147,27 +1240,26 @@ def main():
     log_lines = []
 
     # 1. Ensure .gitignore
+    print_step("1. " + t["git_init"])
     ensure_gitignore(project_dir, t)
 
     # 2. Scan .env and create .env.example
     scan_env_and_create_example(project_dir, t)
 
     # 2b. Secret literal scan (source code)
+    secret_issues = False
     if scan_secrets:
         if not scan_secret_literals(project_dir, t):
-            print_warning(t["secret_in_code_detail"])
-            if not (non_interactive or prompt_yes_no(t["push_confirm"], default_no=True)):
-                sys.exit(1)
+            secret_issues = True
 
     # 2c. Secret-file warning
     if warn_secret_files:
-        if scan_secret_files(project_dir, t):
-            if not (non_interactive or prompt_yes_no(t["push_confirm"], default_no=True)):
-                sys.exit(1)
+        if not scan_secret_files(project_dir, t):
+            secret_issues = True
 
     # 2d. .gitignore gap check
     if check_gitignore_gap_enabled:
-        check_gitignore_gap(project_dir, t)
+        check_gitignore_gap(project_dir, t, non_interactive=non_interactive)
 
     print_divider(thin=True)
 
@@ -1175,11 +1267,18 @@ def main():
     if non_interactive and args.repo:
         repo_name = args.repo
     else:
-        while True:
-            repo_name = prompt_input(t["repo_name_prompt"])
-            if repo_name:
-                break
-            print_error(t["repo_name_empty"])
+        # 既存リポジトリ一覧から選択（token があれば）
+        selected = select_repo(token, t)
+        if selected:
+            repo_name = selected
+            print_info(f"{t['repo_exists_url']}{selected}")
+        else:
+            default_repo = project_dir.name
+            while True:
+                repo_name = prompt_input(t["repo_name_prompt"], default_repo)
+                if repo_name:
+                    break
+                print_error(t["repo_name_empty"])
 
     # visibility
     if args.public:
@@ -1187,19 +1286,12 @@ def main():
     elif args.private:
         private = True
     else:
-        default_vis_choice = "2" if default_visibility == "private" else "1"
-        print(f"{Neon.PROMPT}{t['repo_visibility_prompt']}{Neon.RESET}")
-        for opt in t["repo_visibility_options"]:
-            print(f"  {Neon.INFO}{opt}{Neon.RESET}")
-        while True:
-            vis_choice = prompt_input("Choice / 選択 [1-2]", default_vis_choice)
-            if vis_choice in ("1", "public"):
-                private = False
-                break
-            elif vis_choice in ("2", "private"):
-                private = True
-                break
-            print_warning("Please enter 1 or 2 / 1 または 2 を入力してください")
+        default_vis_idx = 2 if default_visibility == "private" else 1
+        idx = menu_select(t["repo_visibility_options"], default_idx=default_vis_idx,
+                          title=t["repo_visibility_prompt"], t=t, allow_quit=True)
+        if idx is None:
+            sys.exit(0)
+        private = (idx == 2)
 
     # 3c. Try auto-create
     repo_url = create_github_repo(project_dir, repo_name, private, t, provider=provider, token=token)
@@ -1266,7 +1358,17 @@ def main():
 
     # 7. Confirm push
     print_divider()
-    if not non_interactive and not prompt_yes_no(t["push_confirm"], default_no=True):
+    if non_interactive:
+        pass
+    elif secret_issues:
+        print_warning(t["secret_in_code_detail"])
+        if not prompt_yes_no(t["push_confirm"], default_no=True):
+            print_warning(t["push_cancelled"])
+            print_divider()
+            print(f"{Neon.SUCCESS}{t['done']}{Neon.RESET}")
+            press_enter_to_exit(t)
+            return
+    elif not prompt_yes_no(t["push_confirm"], default_no=True):
         print_warning(t["push_cancelled"])
         print_divider()
         print(f"{Neon.SUCCESS}{t['done']}{Neon.RESET}")
