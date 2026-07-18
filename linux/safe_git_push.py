@@ -1285,7 +1285,8 @@ def main():
             sys.exit(0)
         private = (idx == 2)
 
-    # 3c. Try auto-create
+    # 3c. Try auto-create (gh repo create --source=. が git を必要とするため先に init)
+    init_git_repo(project_dir, t)
     repo_url = create_github_repo(project_dir, repo_name, private, t, provider=provider, token=token)
 
     # 3d. Fallback: manual URL input
@@ -1314,10 +1315,7 @@ def main():
 
     print_divider(thin=True)
 
-    # 5. Git operations
-    if not init_git_repo(project_dir, t):
-        sys.exit(1)
-
+    # 5. Git operations (git init は step 3c で済ませている)
     if auto_hook:
         install_pre_commit_hook(project_dir, t)
 
@@ -1341,7 +1339,12 @@ def main():
     # 6. Dry-run preview
     if dry_run_enabled:
         print_step(t["dry_run_title"])
-        run_command(["git", "diff", "--stat", "HEAD"], cwd=project_dir)
+        code, _, _ = run_command(["git", "rev-parse", "HEAD"], cwd=project_dir, capture=True)
+        if code == 0:
+            run_command(["git", "diff", "--stat", "HEAD"], cwd=project_dir)
+        else:
+            # まだコミットが無い（git init 直後）場合はステータスで代用
+            run_command(["git", "status", "--short"], cwd=project_dir)
 
     # 6b. History scan (if enabled)
     if scan_history_enabled:
