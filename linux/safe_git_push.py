@@ -130,14 +130,6 @@ TEXTS = {
         "log_written": "ログを gitpush.log に書きました",
         "provider_gitlab": "GitLab リポジトリを作成しています...",
         "uninstall_done": "アンインストールが完了しました",
-<<<<<<< HEAD
-        "repo_exists": "その名前のリポジトリは既に存在します。それを使いますか？ [y/N]:",
-        "repo_exists_url": "既存リポジトリを使用します: ",
-        "gh_not_authed": "gh でログインしていません。以下を実行してください:",
-        "repo_created_url": "リポジトリを作成しました: ",
-        "repo_url_style": "リモート URL の形式を選択してください:",
-        "repo_url_style_options": ["1. HTTPS（おすすめ・トークン利用）", "2. SSH（鍵登録済みの場合）"],
-=======
         "token_setup_title": "GitHub トークンの設定",
         "token_setup_detail": "Push に使う GitHub トークン (ghp_...) を入力してください。",
         "token_perm_recommend": "永久トークンをおすすめします（一度設定すれば保存されます）",
@@ -146,7 +138,6 @@ TEXTS = {
         "token_invalid": "警告: トークンの形式が不正です（ghp_ 等で始まるはず）",
         "token_from_env": "環境変数からトークンを読み込みました",
         "token_empty_skip": "トークンが無いので、URL を手動入力します",
->>>>>>> main
     },
     "en": {
         "title": "Welcome to Safe Git Push!",
@@ -217,14 +208,6 @@ TEXTS = {
         "log_written": "Log written to gitpush.log",
         "provider_gitlab": "Creating GitLab repository...",
         "uninstall_done": "Uninstall completed",
-<<<<<<< HEAD
-        "repo_exists": "A repo with that name already exists. Use it instead? [y/N]:",
-        "repo_exists_url": "Using existing repo: ",
-        "gh_not_authed": "You are not logged in to gh. Run this first:",
-        "repo_created_url": "Repository created: ",
-        "repo_url_style": "Select remote URL style:",
-        "repo_url_style_options": ["1. HTTPS (recommended, uses token)", "2. SSH (if key is registered)"],
-=======
         "token_setup_title": "GitHub token setup",
         "token_setup_detail": "Enter the GitHub token (ghp_...) used for pushing.",
         "token_perm_recommend": "A permanent token is recommended (saved once, reused).",
@@ -233,7 +216,6 @@ TEXTS = {
         "token_invalid": "Warning: token format looks wrong (should start with ghp_ etc.)",
         "token_from_env": "Loaded token from environment variable",
         "token_empty_skip": "No token given, will ask for URL manually",
->>>>>>> main
     }
 }
 
@@ -959,14 +941,6 @@ def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict
         print_warning(t["gh_missing"])
         return None
 
-<<<<<<< HEAD
-    # 認証状態をチェック（未認証なら明示案内）
-    auth_code, _, _ = run_command(["gh", "auth", "status"], capture=True)
-    if auth_code != 0:
-        print_warning(t["gh_not_authed"])
-        print_info("  gh auth login")
-        return None
-
     # 同名リポジトリが既に存在するか確認
     view_code, view_out, _ = run_command(
         ["gh", "repo", "view", repo_name, "--json", "url"], cwd=project_dir, capture=True
@@ -982,15 +956,6 @@ def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict
             print_success(t["repo_exists_url"] + existing_url)
             return _maybe_ssh(existing_url, project_dir, t)
         # 使わない場合は新規作成へ
-=======
-    # token があれば gh 認証チェックをスキップ（gh は GITHUB_TOKEN を自動使用）
-    if not token:
-        auth_code, _, _ = run_command(["gh", "auth", "status"], capture=True)
-        if auth_code != 0:
-            print_warning(t["gh_not_authed"])
-            print_info("  gh auth login")
-            return None
->>>>>>> main
 
     print_step(t["repo_creating"])
     vis_flag = "--private" if private else "--public"
