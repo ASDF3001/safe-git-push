@@ -11,6 +11,7 @@ import os
 import sys
 import subprocess
 import shlex
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -81,6 +82,10 @@ TEXTS = {
         "repo_creating": "GitHub にリポジトリを作成しています...",
         "repo_created": "リポジトリを作成しました",
         "repo_create_failed": "リポジトリの自動作成に失敗しました（URLを手入力できます）",
+        "repo_exists": "既存のリポジトリが見つかりました",
+        "repo_exists_url": "既存リポジトリを使用: ",
+        "repo_url_style": "リモートURLの形式を選択",
+        "repo_url_style_options": ["1. HTTPS（推奨）", "2. SSH（git@...）"],
         "gh_missing": "gh が見つからないか未認証です。URLを直接入力してください",
         "auth_note": "自分のトークンで自動作成したい場合: gh auth login を実行してください",
         "branch_prompt": "ブランチ名を入力してください [main]",
@@ -163,6 +168,10 @@ TEXTS = {
         "repo_creating": "Creating repository on GitHub...",
         "repo_created": "Repository created",
         "repo_create_failed": "Failed to auto-create repo (you can enter URL manually)",
+        "repo_exists": "An existing repository was found",
+        "repo_exists_url": "Using existing repository: ",
+        "repo_url_style": "Select remote URL style",
+        "repo_url_style_options": ["1. HTTPS (recommended)", "2. SSH (git@...)"],
         "gh_missing": "gh not found or not authenticated. Enter URL directly",
         "auth_note": "To auto-create with your token, run: gh auth login",
         "branch_prompt": "Enter branch name [main]",
@@ -256,7 +265,7 @@ def print_title(t: Dict[str, str], lang: str):
 
 
 def print_step(msg: str):
-    print(f"{Neon.INFO}┌─ {msg}{Neon.RESET}")
+    print(f"{Neon.INFO}>> {msg}{Neon.RESET}")
 
 
 def print_success(msg: str):
@@ -275,8 +284,10 @@ def print_error(msg: str):
     print(f"{Neon.ERROR}[X] {msg}{Neon.RESET}")
 
 
-def prompt_input(prompt: str, default: str = "") -> str:
-    if default:
+def prompt_input(prompt: str, default: str = "", range_hint: str = "") -> str:
+    if range_hint:
+        full_prompt = f"{Neon.PROMPT}{prompt} {Neon.INFO}[{range_hint}]{Neon.PROMPT}: {Neon.INPUT}"
+    elif default:
         full_prompt = f"{Neon.PROMPT}{prompt} {Neon.INFO}[{default}]{Neon.PROMPT}: {Neon.INPUT}"
     else:
         full_prompt = f"{Neon.PROMPT}{prompt}{Neon.PROMPT}: {Neon.INPUT}"
@@ -326,10 +337,7 @@ def menu_select(options: List[str], default_idx: int = 0, title: str = "",
     if allow_quit:
         print(f"  {Neon.WARNING}  q. {t['menu_select_quit'] if t else 'quit'}{Neon.RESET}")
     while True:
-        if default_idx:
-            choice = prompt_input("Choice / 選択", str(default_idx))
-        else:
-            choice = prompt_input("Choice / 選択", "")
+        choice = prompt_input("Choice / 選択", "", range_hint=f"1-{len(options)}")
         if allow_quit and choice.lower() == "q":
             return None
         if not choice and default_idx:
@@ -1037,7 +1045,7 @@ def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict
     code, out, _ = run_command(["git", "remote", "get-url", "origin"], cwd=project_dir, capture=True)
     if code == 0 and out.strip():
         url = out.strip()
-        print_success(t["repo_created_url"] + url)
+        print_success(t["repo_created"] + ": " + url)
         return _maybe_ssh(url, project_dir, t)
 
     print_warning(t["repo_create_failed"])
