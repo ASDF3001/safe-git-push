@@ -77,16 +77,28 @@ gitpush --yes --public --repo my-repo --message "Initial commit"
 
 ## GitHub トークンの作り方
 
-1. GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
-2. Generate new token (classic)
-3. Note 入力、Expiration は No expiration（永久）、scopes は `repo` にチェック
-4. Generate token で `ghp_...` をコピー
+> ⚠️ **トークンは必ず GitHub で発行し、自分で管理してください。平文で共有・コミットしないでください。**
 
-ツールを起動すると **毎回トークン入力を求められます**（環境変数や保存値は使いません）。入力したトークンはプロジェクトの `gitpush.toml` に保存され、次回以降も再利用されます。`gh` でのリポジトリ自動作成もこの入力トークンを使うため、`gh auth login` は不要です。
+1. GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
+2. **Generate new token (classic)** を選ぶ
+3. Note を入力、Expiration はお好み（例: 90 days）
+4. **Scopes（権限）に必ず以下の両方にチェックを入れる**:
+   - ✅ `repo` （リポジトリの読み書き — プッシュに必要）
+   - ✅ `workflow` （`.github/workflows/*.yml` を push するために**必須**。これが無いと push が拒否されます）
+5. Generate token で `ghp_...` をコピー
+
+ツールを起動すると **毎回トークン入力を求められます**（環境変数や保存値は使いません）。
+入力したトークンは **`~/.config/gitpush.toml`（プロジェクト外）のみ** に保存され、プロジェクトの `gitpush.toml` には書き込まれません（pre-commit フックに検出されるのを防ぐため）。
+`gh` でのリポジトリ自動作成もこの入力トークンを使うため、`gh auth login` は不要です。
+
+> 💡 `workflow` スコープを忘れると、CI ワークフローファイルを含む push が
+> `refusing to allow a Personal Access Token to create or update workflow ... without 'workflow' scope`
+> で拒否されます。その場合はトークンに `workflow` を追加するか、`auto_ci = false` にしてください。
 
 ## 高度な機能（自動化 / v1.2.0）
 
 設定はすべて `gitpush.toml`（プロジェクト + グローバル `~/.config/gitpush.toml`）で管理します。対話式の設定メニューは廃止しました。
+**トークンはプロジェクトの `gitpush.toml` には書かず、常にグローバル設定か都度入力で管理してください。**
 
 設定ファイル `gitpush.toml` をプロジェクトに置くと、デフォルト動作を変えられます:
 

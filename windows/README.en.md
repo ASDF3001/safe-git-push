@@ -67,16 +67,26 @@ Menus: pick by number, `q` cancels/exits. `q` does not respond in y/N prompts or
 
 ## Making a GitHub token
 
-1. GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
-2. Generate new token (classic)
-3. Note, Expiration = No expiration, check `repo` scope
-4. Generate token, copy `ghp_...`
+> ⚠️ **Always create the token yourself on GitHub and keep it secret. Never share or commit it in plaintext.**
 
-The tool **prompts for the token on every run** (environment variables and saved values are not used). The entered token is saved to the project's `gitpush.toml` for reuse. `gh` auto-creation also uses this entered token, so `gh auth login` is not required.
+1. GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
+2. Choose **Generate new token (classic)**
+3. Enter a Note, set Expiration as you like (e.g. 90 days)
+4. **Check BOTH scopes**:
+   - ✅ `repo` (read/write repos — required to push)
+   - ✅ `workflow` (**required** to push `.github/workflows/*.yml`; without it, push is rejected)
+5. Generate token, copy `ghp_...`
+
+The tool **prompts for the token on every run** (environment variables and saved values are not used). The entered token is saved only to **`~/.config/gitpush.toml` (outside the project)**, never to the project's `gitpush.toml` (so the pre-commit hook won't flag it). `gh` auto-creation also uses this entered token, so `gh auth login` is not required.
+
+> 💡 Forgetting the `workflow` scope causes push to be rejected with
+> `refusing to allow a Personal Access Token to create or update workflow ... without 'workflow' scope`.
+> Add `workflow` to the token, or set `auto_ci = false`.
 
 ## Advanced features (automation)
 
 All settings live in `gitpush.toml` (project + global `~/.config/gitpush.toml`). The interactive settings menu has been removed.
+**Never put the token in the project's `gitpush.toml`; manage it via global config or per-run input.**
 
 Place `gitpush.toml` in your project to change defaults:
 
