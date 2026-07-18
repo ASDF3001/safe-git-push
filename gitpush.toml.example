@@ -1,0 +1,24 @@
+# Safe Git Push 設定例 / Example config
+# このファイルを gitpush.toml としてプロジェクトのルートに置いてください
+# Copy this file as gitpush.toml in your project root
+
+# リポジトリの初期公開設定: "public" または "private"
+default_visibility = "public"
+
+# デフォルトブランチ名
+default_branch = "main"
+
+# 読み込む GitHub トークンの環境変数名
+token_env = "GITHUB_TOKEN"
+
+# pre-commit フックを自動登録するか
+auto_hook = true
+
+# GitHub Actions の secret-scan ワークフローを自動生成するか
+auto_ci = true
+
+# 起動時に自分自身を自動更新するか
+self_update = true
+
+# この文字列がリモートURLに含まれていなければ警告する（空なら無効）
+expected_remote = ""

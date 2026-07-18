@@ -14,17 +14,10 @@ import shlex
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-# Windows のコンソール出力を UTF-8 にする（cp932 での日本語エンコード失敗を防ぐ）
-if sys.stdout and hasattr(sys.stdout, "reconfigure"):
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
-if sys.stderr and hasattr(sys.stderr, "reconfigure"):
-    try:
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+# スクリプトバージョン（self-update で使用）
+SCRIPT_VERSION = "1.1.0"
+# 自分自身を更新する際の raw URL（linux / windows で上書きされる）
+SELF_UPDATE_RAW_URL = "https://raw.githubusercontent.com/ASDF3001/safe-git-push/main/windows/safe_git_push.py"
 
 
 def ensure_colorama():
@@ -105,6 +98,19 @@ TEXTS = {
         "error_not_git_repo": "ここは Git リポジトリではありません。",
         "done": "完了",
         "press_enter": "Enter キーで終了...",
+        "config_loaded": "設定ファイルを読み込みました",
+        "config_not_found": "設定ファイルが見つかりません（デフォルトを使用）",
+        "config_error": "設定ファイルの読み込みに失敗しました（デフォルトを使用）",
+        "remote_warning": "警告: 予期しないリモート先が設定されています",
+        "remote_expected": "予期されるリモート: ",
+        "hook_installed": "pre-commit フックを登録しました（.env の混入を防ぎます）",
+        "hook_exists": "pre-commit フックは既に存在します",
+        "ci_created": ".github/workflows/secret-scan.yml を作成しました",
+        "ci_exists": ".github/workflows/secret-scan.yml は既に存在します",
+        "update_available": "新しいバージョンがあります。更新しますか？ [y/N]:",
+        "update_no": "更新はありません",
+        "update_failed": "更新の確認に失敗しました（スキップ）",
+        "updating": "自己更新中...",
     },
     "en": {
         "title": "Welcome to Safe Git Push!",
@@ -143,6 +149,19 @@ TEXTS = {
         "error_not_git_repo": "Not a Git repository.",
         "done": "Done!",
         "press_enter": "Press Enter to exit...",
+        "config_loaded": "Config file loaded",
+        "config_not_found": "Config file not found (using defaults)",
+        "config_error": "Failed to load config (using defaults)",
+        "remote_warning": "Warning: unexpected remote destination is configured",
+        "remote_expected": "Expected remote: ",
+        "hook_installed": "pre-commit hook installed (blocks .env commits)",
+        "hook_exists": "pre-commit hook already exists",
+        "ci_created": "Created .github/workflows/secret-scan.yml",
+        "ci_exists": ".github/workflows/secret-scan.yml already exists",
+        "update_available": "A new version is available. Update now? [y/N]:",
+        "update_no": "No update available",
+        "update_failed": "Failed to check for updates (skipped)",
+        "updating": "Self-updating...",
     }
 }
 
@@ -243,6 +262,195 @@ def run_command(cmd: List[str], cwd: Optional[Path] = None, capture: bool = Fals
         return -1, "", "command not found"
     except Exception as e:
         return -1, "", str(e)
+
+
+# ============================================================================
+# Config (gitpush.toml)
+# ============================================================================
+def load_config(project_dir: Path, t: Dict[str, str]) -> Dict[str, object]:
+    """gitpush.toml を読み込む。無い / 壊れてる場合はデフォルトを返す。"""
+    cfg_path = project_dir / "gitpush.toml"
+    defaults: Dict[str, object] = {
+        "default_visibility": "public",   # public | private
+        "token_env": "GITHUB_TOKEN",       # 読み込む環境変数名
+        "default_branch": "main",
+        "auto_hook": True,                  # pre-commit フックを自動登録
+        "auto_ci": True,                   # secret-scan.yml を自動生成
+        "self_update": True,               # 起動時に自己更新チェック
+        "expected_remote": "",             # 警告用: 期待されるリモートURLの一部
+    }
+    if not cfg_path.exists():
+        print_info(t["config_not_found"])
+        return defaults
+    try:
+        try:
+            import tomllib
+            with open(cfg_path, "rb") as f:
+                data = tomllib.load(f)
+        except ModuleNotFoundError:
+            try:
+                import toml  # type: ignore
+                data = toml.load(cfg_path)
+            except ModuleNotFoundError:
+                # 簡易パース（階層なしの key = "value" のみ対応）
+                data = {}
+                for line in cfg_path.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    data[k.strip()] = v.strip().strip('"').strip("'")
+        merged = dict(defaults)
+        merged.update(data)
+        print_success(t["config_loaded"])
+        return merged
+    except Exception as e:
+        print_warning(f"{t['config_error']}: {e}")
+        return defaults
+
+
+# ============================================================================
+# Auto-registration: pre-commit hook
+# ============================================================================
+PRE_COMMIT_HOOK = """#!/usr/bin/env bash
+# Safe Git Push - pre-commit hook (auto-generated)
+# .env やトークンらしき文字列がコミットされようとしていたらブロックする
+set -euo pipefail
+
+echo "[safe-git-push] checking for secrets..."
+
+# 1. .env ファイルがステージされていないか（.env.example は許可）
+#    ブロック: .env, .env.local, .env.prod など
+#    許可:     .env.example
+if git diff --cached --name-only | grep -E '(^|/)\.env(\.[a-zA-Z0-9]+)?$' | grep -v '\.env\.example$' ; then
+    echo "ERROR: .env file is staged. Remove it (use .env.example instead)."
+    exit 1
+fi
+
+# 2. トークンらしき文字列 (ghp_, github_pat_, etc.) が含まれていないか
+if git diff --cached -U0 | grep -iE 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}' ; then
+    echo "ERROR: possible token/secret found in commit. Aborting."
+    exit 1
+fi
+
+echo "[safe-git-push] no secrets detected."
+exit 0
+"""
+
+
+def install_pre_commit_hook(project_dir: Path, t: Dict[str, str]) -> None:
+    hook_path = project_dir / ".git" / "hooks" / "pre-commit"
+    if hook_path.exists():
+        print_info(t["hook_exists"])
+        return
+    hook_path.parent.mkdir(parents=True, exist_ok=True)
+    hook_path.write_text(PRE_COMMIT_HOOK, encoding="utf-8")
+    try:
+        hook_path.chmod(0o755)
+    except Exception:
+        pass
+    print_success(t["hook_installed"])
+
+
+# ============================================================================
+# Auto-registration: GitHub Actions secret scan
+# ============================================================================
+SECRET_SCAN_WORKFLOW = """name: Secret Scan
+
+on: [push, pull_request]
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          config-path: .github/gitleaks.toml
+        continue-on-error: true
+"""
+
+GITLEAKS_CONFIG = """title = "gitpush default"
+
+[[rules]]
+id = "github-token"
+description = "GitHub Personal Access Token"
+regex = '''ghp_[A-Za-z0-9]{20,}'''
+[[rules]]
+id = "github-pat"
+description = "GitHub Fine-grained PAT"
+regex = '''github_pat_[A-Za-z0-9_]{20,}'''
+[[rules]]
+id = "aws-key"
+description = "AWS Access Key"
+regex = '''AKIA[0-9A-Z]{16}'''
+"""
+
+
+def create_ci_workflow(project_dir: Path, t: Dict[str, str]) -> None:
+    wf_path = project_dir / ".github" / "workflows" / "secret-scan.yml"
+    if wf_path.exists():
+        print_info(t["ci_exists"])
+        return
+    wf_path.parent.mkdir(parents=True, exist_ok=True)
+    wf_path.write_text(SECRET_SCAN_WORKFLOW, encoding="utf-8")
+    # gitleaks 設定も置く
+    (project_dir / ".github" / "gitleaks.toml").write_text(GITLEAKS_CONFIG, encoding="utf-8")
+    print_success(t["ci_created"])
+
+
+# ============================================================================
+# Multi-remote warning
+# ============================================================================
+def check_unexpected_remote(project_dir: Path, expected: str, t: Dict[str, str]) -> None:
+    if not expected:
+        return
+    code, out, _ = run_command(["git", "remote", "-v"], cwd=project_dir, capture=True)
+    if code != 0:
+        return
+    for line in out.splitlines():
+        if "origin" in line and "push" in line:
+            url = line.split()[1]
+            if expected not in url:
+                print_warning(t["remote_warning"])
+                print_warning(f"{t['remote_expected']}{expected}")
+                print_warning(f"  actual: {url}")
+
+
+# ============================================================================
+# Self-update
+# ============================================================================
+def self_update(t: Dict[str, str], raw_url: str) -> None:
+    import urllib.request
+    try:
+        with urllib.request.urlopen(raw_url, timeout=10) as resp:
+            content = resp.read().decode("utf-8", errors="replace")
+    except Exception:
+        print_warning(t["update_failed"])
+        return
+    # バージョンを探す
+    import re
+    m = re.search(r'SCRIPT_VERSION\s*=\s*["\']([^"\']+)["\']', content)
+    if not m:
+        return
+    remote_version = m.group(1)
+    if remote_version <= SCRIPT_VERSION:
+        print_info(t["update_no"])
+        return
+    print_info(f"local={SCRIPT_VERSION} remote={remote_version}")
+    if not prompt_yes_no(t["update_available"], default_no=True):
+        return
+    print_step(t["updating"])
+    try:
+        script_path = Path(__file__).resolve()
+        # バックアップ
+        backup = script_path.with_suffix(".py.bak")
+        backup.write_text(script_path.read_text(encoding="utf-8"), encoding="utf-8")
+        script_path.write_text(content, encoding="utf-8")
+        print_success(f"Updated to {remote_version} (backup: {backup.name})")
+    except Exception as e:
+        print_warning(f"{t['update_failed']}: {e}")
 
 
 # ============================================================================
@@ -500,6 +708,19 @@ def main():
     print(f"{Neon.INFO}Working directory: {project_dir}{Neon.RESET}")
     print_divider(thin=True)
 
+    # 0. Self-update check (before anything else)
+    cfg_pre = load_config(project_dir, t)
+    if cfg_pre.get("self_update", True):
+        self_update(t, SELF_UPDATE_RAW_URL)
+
+    # Reload config after potential update
+    cfg = load_config(project_dir, t)
+    default_visibility = cfg.get("default_visibility", "public")
+    default_branch = cfg.get("default_branch", "main")
+    auto_hook = cfg.get("auto_hook", True)
+    auto_ci = cfg.get("auto_ci", True)
+    expected_remote = cfg.get("expected_remote", "")
+
     # 1. Ensure .gitignore
     ensure_gitignore(project_dir, t)
 
@@ -516,12 +737,13 @@ def main():
             break
         print_error(t["repo_name_empty"])
 
-    # 3b. Ask visibility
+    # 3b. Ask visibility (default from config)
+    default_vis_choice = "2" if default_visibility == "private" else "1"
     print(f"{Neon.PROMPT}{t['repo_visibility_prompt']}{Neon.RESET}")
     for opt in t["repo_visibility_options"]:
         print(f"  {Neon.INFO}{opt}{Neon.RESET}")
     while True:
-        vis_choice = prompt_input("Choice / 選択 [1-2]", "1")
+        vis_choice = prompt_input("Choice / 選択 [1-2]", default_vis_choice)
         if vis_choice in ("1", "public"):
             private = False
             break
@@ -541,14 +763,22 @@ def main():
                 break
             print_error(t["repo_url_empty"])
 
-    # 4. Get branch name
-    branch_name = prompt_input(t["branch_prompt"], "main")
+    # 4. Get branch name (default from config)
+    branch_name = prompt_input(t["branch_prompt"], default_branch)
 
     print_divider(thin=True)
 
     # 5. Git operations
     if not init_git_repo(project_dir, t):
         sys.exit(1)
+
+    # 5b. Auto-register pre-commit hook
+    if auto_hook:
+        install_pre_commit_hook(project_dir, t)
+
+    # 5c. Auto-generate CI workflow
+    if auto_ci:
+        create_ci_workflow(project_dir, t)
 
     if not setup_git_remote(project_dir, repo_url, t):
         sys.exit(1)
@@ -567,6 +797,9 @@ def main():
         print(f"{Neon.SUCCESS}{t['done']}{Neon.RESET}")
         press_enter_to_exit(t)
         return
+
+    # 6b. Multi-remote warning
+    check_unexpected_remote(project_dir, expected_remote, t)
 
     # 7. Push
     if not git_push(project_dir, branch_name, t):

@@ -70,3 +70,27 @@ Interactive flow (same as Linux version):
 6. `githubtoken.env` is gitignored, so it will not be pushed
 
 For `gh` auto-creation, also run `gh auth login`.
+
+## Advanced features (automation)
+
+Place `gitpush.toml` in your project to change defaults:
+
+```toml
+default_visibility = "private"
+default_branch = "main"
+token_env = "GITHUB_TOKEN"
+auto_hook = true
+auto_ci = true
+self_update = true
+expected_remote = "ASDF3001"
+```
+
+Automatically performed:
+
+1. **pre-commit hook** — blocks commits with `.env` or tokens
+2. **CI workflow** — `.github/workflows/secret-scan.yml` (gitleaks)
+3. **Remote warning** — warns on unexpected remote push
+4. **Self-update** — compares with latest version on launch
+
+The exe also reads `gitpush.toml` (placed next to the exe or in the current directory).
+

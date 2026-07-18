@@ -73,3 +73,27 @@ gitpush
 6. `githubtoken.env` は `.gitignore` で除外済みなので push されません
 
 `gh` での自動作成を使う場合は `gh auth login` も実行してください。
+
+## 高度な機能（自動化）
+
+プロジェクトに `gitpush.toml` を置くとデフォルト動作を変えられます:
+
+```toml
+default_visibility = "private"
+default_branch = "main"
+token_env = "GITHUB_TOKEN"
+auto_hook = true
+auto_ci = true
+self_update = true
+expected_remote = "ASDF3001"
+```
+
+自動で行われること:
+
+1. **pre-commit フック登録** — `.env` やトークンがコミットされるのをブロック
+2. **CI ワークフロー生成** — `.github/workflows/secret-scan.yml`（gitleaks）
+3. **リモート警告** — 予期しないリモートへの push を警告
+4. **自己更新** — 起動時に最新版と比較し更新を提案
+
+exe の場合も `gitpush.toml` は同じように機能します（exe と同じフォルダ、またはカレントディレクトリに置く）。
+
