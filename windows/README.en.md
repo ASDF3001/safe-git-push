@@ -48,10 +48,15 @@ Interactive flow (same as Linux version):
 1. Language selection (Japanese / English)
 2. Check / create `.gitignore`
 3. Scan `.env` and generate `.env.example`
-4. Enter repository name and visibility (Public / Private)
-5. `git init` / `remote add` / `branch -M main`
-6. `git add .` / `commit`
-7. `Push to GitHub? [y/N]` — only `y` pushes
+4. Scan source for secret literals / secret files (warnings only; bundled into the final push confirmation if issues found)
+5. `.gitignore` gap check (warn and offer to append missing patterns)
+6. Repository selection — GitHub API lists existing repos; pick by number / `0` for new / `q` to quit. Visibility (Public / Private) by number
+7. `git init` / `remote add` / `branch -M main`
+8. `git add .` / `commit`
+9. Dry-run preview (`git diff --stat`)
+10. `Push to GitHub? [y/N]` — only `y` pushes (typing `q` in a menu does not affect this prompt)
+
+Menus: pick by number, `q` cancels/exits. `q` does not respond in y/N prompts or free-text inputs.
 
 ## Requirements
 
@@ -72,6 +77,8 @@ Interactive flow (same as Linux version):
 For `gh` auto-creation, also run `gh auth login`.
 
 ## Advanced features (automation)
+
+All settings live in `gitpush.toml` (project + global `~/.config/gitpush.toml`). The interactive settings menu has been removed.
 
 Place `gitpush.toml` in your project to change defaults:
 
