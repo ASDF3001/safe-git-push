@@ -1,4 +1,4 @@
-# 🛡️ Safe Git Push (`safe-git-push`)
+# Safe Git Push (`safe-git-push`)
 
 機密情報（`.env`、セッションログ、AIエージェントの設定など）を守りながら、
 **安全に GitHub へプッシュ・公開**するためのインタラクティブ CLI ツールです。
@@ -9,7 +9,7 @@
 
 ---
 
-## ✨ 主な機能
+## 主な機能
 
 1. **`.gitignore` の自動生成**
    - 存在しない場合、機密ファイルを除外する `.gitignore` を作成
@@ -28,7 +28,7 @@
 
 ---
 
-## 🚀 使い方
+## 使い方
 
 ### エイリアス経由（推奨）
 
@@ -44,7 +44,7 @@ alias gitpush='python3 ~/git-push-tool/safe_git_push.py'
 gitpush
 ```
 
-### 直接実行
+### 直接実行(linuxの場合)
 
 ```sh
 python3 ~/git-push-tool/safe_git_push.py
@@ -52,21 +52,21 @@ python3 ~/git-push-tool/safe_git_push.py
 
 ---
 
-## 🌐 言語
+## 言語
 
 起動時に `1. 日本語` / `2. English` を選択できます。
 すべてのメッセージとプロンプトが選択した言語で表示されます。
 
 ---
 
-## 🎨 CUI デザイン
+## CUI デザイン
 
 ネオン / サイバー風のカラーテーマ（マゼンタ・シアン）で、
 見やすくてかっこいい出力になっています。
 
 ---
 
-## 🔑 GitHub トークンの作り方（自分でやる）
+## GitHub トークンの作り方
 
 このツールは **あなた自身の GitHub アカウント** でリポジトリを作成・push します。
 そのために、あなた専用の Personal Access Token（以下 PAT）を作ってください。
@@ -98,7 +98,7 @@ export GITHUB_TOKEN=ghp_ここにコピーしたトークン
 echo 'export GITHUB_TOKEN=ghp_xxxxxxxxxxxx' > ~/githubtoken.env
 ```
 
-> ⚠️ `githubtoken.env` は **絶対に Git に入れないでください**。
+> `githubtoken.env` は **絶対に Git に入れないでください**。
 > このツールが生成する `.gitignore` には `.env` が含まれているので、
 > `githubtoken.env` という名前にしておけば誤って push されることはありません。
 
@@ -120,7 +120,7 @@ gh auth login
 
 ---
 
-## 📦 依存関係
+## 依存関係
 
 - Python 3.7 以上
 - `colorama`（自動インストールされます）
@@ -132,7 +132,7 @@ gh auth login
 
 ---
 
-## 📁 ファイル構成
+## ファイル構成
 
 ```
 git-push-tool/
@@ -142,7 +142,7 @@ git-push-tool/
 
 ---
 
-## ⚠️ 注意
+## 注意
 
 - このツールは「初回の安全な push」を補助するものです。
   push 前には必ず `git status` / `git diff` で内容を確認してください。
