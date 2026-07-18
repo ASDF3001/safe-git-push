@@ -101,6 +101,10 @@ TEXTS = {
         "config_loaded": "設定ファイルを読み込みました",
         "config_not_found": "設定ファイルが見つかりません（デフォルトを使用）",
         "config_error": "設定ファイルの読み込みに失敗しました（デフォルトを使用）",
+        "config_validated": "設定値の検証に通過しました",
+        "config_unknown_key": "警告: 不明な設定キーを無視しました:",
+        "config_bad_type": "警告: 設定の型が不正です:",
+        "config_bad_value": "警告: 設定値が取り得ない値です:",
         "remote_warning": "警告: 予期しないリモート先が設定されています",
         "remote_expected": "予期されるリモート: ",
         "hook_installed": "pre-commit フックを登録しました（.env の混入を防ぎます）",
@@ -166,6 +170,10 @@ TEXTS = {
         "config_loaded": "Config file loaded",
         "config_not_found": "Config file not found (using defaults)",
         "config_error": "Failed to load config (using defaults)",
+        "config_validated": "Config values validated",
+        "config_unknown_key": "Warning: unknown config key ignored:",
+        "config_bad_type": "Warning: config value has wrong type:",
+        "config_bad_value": "Warning: config value is not allowed:",
         "remote_warning": "Warning: unexpected remote destination is configured",
         "remote_expected": "Expected remote: ",
         "hook_installed": "pre-commit hook installed (blocks .env commits)",
@@ -342,6 +350,65 @@ def load_config(project_dir: Path, t: Dict[str, str]) -> Dict[str, object]:
     except Exception as e:
         print_warning(f"{t['config_error']}: {e}")
         return defaults
+
+
+# 設定キーごとの期待型 / 取り得る値（バリデーション用）
+CONFIG_SCHEMA: Dict[str, Dict[str, object]] = {
+    "default_visibility": {"type": str, "choices": ["public", "private"]},
+    "token_env": {"type": str},
+    "default_branch": {"type": str},
+    "auto_hook": {"type": bool},
+    "auto_ci": {"type": bool},
+    "self_update": {"type": bool},
+    "expected_remote": {"type": str},
+    "scan_secrets": {"type": bool},
+    "warn_secret_files": {"type": bool},
+    "scan_history": {"type": bool},
+    "check_gitignore_gap": {"type": bool},
+    "dry_run": {"type": bool},
+    "default_message": {"type": str},
+    "branch_pattern": {"type": str},
+    "extra_remotes": {"type": list},
+    "update_channel": {"type": str, "choices": ["stable", "beta"]},
+    "provider": {"type": str, "choices": ["github", "gitlab"]},
+    "log_file": {"type": str},
+}
+
+
+def validate_config(cfg: Dict[str, object], t: Dict[str, str]) -> None:
+    """設定値の妥当性をチェックし、不正があれば警告する。"""
+    warned = False
+    for key, val in cfg.items():
+        schema = CONFIG_SCHEMA.get(key)
+        if schema is None:
+            print_warning(f"{t['config_unknown_key']} {key}")
+            warned = True
+            continue
+        # 型チェック
+        expected = schema["type"]
+        if expected is bool and not isinstance(val, bool):
+            # TOML 簡易パース等で文字列化された真偽値を救う
+            if isinstance(val, str) and val.lower() in ("true", "false"):
+                cfg[key] = (val.lower() == "true")
+                continue
+            print_warning(f"{t['config_bad_type']} {key} (expected bool, got {type(val).__name__})")
+            warned = True
+        elif expected is list and not isinstance(val, list):
+            if isinstance(val, str) and val == "":
+                cfg[key] = []
+                continue
+            print_warning(f"{t['config_bad_type']} {key} (expected list, got {type(val).__name__})")
+            warned = True
+        elif expected is str and not isinstance(val, str):
+            print_warning(f"{t['config_bad_type']} {key} (expected string, got {type(val).__name__})")
+            warned = True
+        # choices チェック
+        choices = schema.get("choices")
+        if choices and isinstance(val, str) and val not in choices:
+            print_warning(f"{t['config_bad_value']} {key}={val!r} (expected one of {choices})")
+            warned = True
+    if not warned:
+        print_success(t["config_validated"])
 
 
 def _load_toml_file(path: Path, t: Dict[str, str]) -> Dict[str, object]:
@@ -603,6 +670,7 @@ def parse_version(v: str):
     import re
     m = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z0-9.]+))?$", v.strip())
     if not m:
+        # 解析不可な場合は辞書順比較のためそのまま返す
         return (0, 0, 0, 1, v)
     major, minor, patch = int(m.group(1)), int(m.group(2)), int(m.group(3))
     pre = m.group(4)
@@ -959,6 +1027,7 @@ def main():
 
     # Reload config after potential update
     cfg = load_config(project_dir, t)
+    validate_config(cfg, t)
     default_visibility = cfg.get("default_visibility", "public")
     default_branch = cfg.get("default_branch", "main")
     auto_hook = cfg.get("auto_hook", True)
