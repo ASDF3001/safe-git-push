@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 # スクリプトバージョン（self-update で使用）
-SCRIPT_VERSION = "1.2.0"
+SCRIPT_VERSION = "1.2.1"
 # 自分自身を更新する際の raw URL（linux / windows で上書きされる）
 SELF_UPDATE_RAW_URL = "https://raw.githubusercontent.com/ASDF3001/safe-git-push/main/linux/safe_git_push.py"
 
@@ -138,17 +138,10 @@ TEXTS = {
         "token_invalid": "警告: トークンの形式が不正です（ghp_ 等で始まるはず）",
         "token_from_env": "環境変数からトークンを読み込みました",
         "token_empty_skip": "トークンが無いので、URL を手動入力します",
-        "repo_list_title": "既存のリポジトリ一覧（数字で選択 / 0 で新規作成）",
+        "repo_list_title": "既存のリポジトリ一覧（数字で選択 / 0 で新規作成 / q で終了）",
         "repo_list_empty": "既存リポジトリが見つかりません（0 で新規作成）",
         "repo_list_failed": "リポジトリ一覧の取得に失敗しました（新規作成または URL 手入力）",
-        "settings_title": "設定メニュー",
-        "settings_mode": "モードを選択:",
-        "settings_mode_options": ["1. 初心者モード（基本のみ）", "2. 上級者モード（すべて）"],
-        "settings_done": "設定を保存しました",
-        "settings_item": "  {0}. {1}",
-        "settings_select": "変更する項目の数字（完了は 0）",
-        "settings_value": "{0} の新しい値を入力",
-        "settings_menu_prompt": "設定メニューを開きますか？ [y/N]:",
+        "menu_select_quit": "q で終了",
     },
     "en": {
         "title": "Welcome to Safe Git Push!",
@@ -227,17 +220,10 @@ TEXTS = {
         "token_invalid": "Warning: token format looks wrong (should start with ghp_ etc.)",
         "token_from_env": "Loaded token from environment variable",
         "token_empty_skip": "No token given, will ask for URL manually",
-        "repo_list_title": "Existing repositories (pick by number / 0 for new):",
+        "repo_list_title": "Existing repositories (pick by number / 0 for new / q to quit):",
         "repo_list_empty": "No existing repos found (0 to create new)",
         "repo_list_failed": "Failed to list repos (create new or enter URL manually)",
-        "settings_title": "Settings menu",
-        "settings_mode": "Select mode:",
-        "settings_mode_options": ["1. Beginner (basics only)", "2. Advanced (all options)"],
-        "settings_done": "Settings saved",
-        "settings_item": "  {0}. {1}",
-        "settings_select": "Number of item to change (0 to finish):",
-        "settings_value": "New value for {0}",
-        "settings_menu_prompt": "Open settings menu? [y/N]:",
+        "menu_select_quit": "q to quit",
     }
 }
 
@@ -270,7 +256,7 @@ def print_title(t: Dict[str, str], lang: str):
 
 
 def print_step(msg: str):
-    print(f"{Neon.INFO}> {msg}{Neon.RESET}")
+    print(f"{Neon.INFO}┌─ {msg}{Neon.RESET}")
 
 
 def print_success(msg: str):
@@ -325,14 +311,43 @@ def press_enter_to_exit(t: Dict[str, str]):
         pass
 
 
-def run_command(cmd: List[str], cwd: Optional[Path] = None, capture: bool = False) -> Tuple[int, str, str]:
+def menu_select(options: List[str], default_idx: int = 0, title: str = "",
+                t: Dict[str, str] = None, allow_quit: bool = True) -> Optional[int]:
+    """番号選択メニュー。q で終了 (None を返す)。`q` は y/N プロンプトや
+    自由入力には影響しない（干渉回避のため、このメニュー専用）。"""
+    if not options:
+        return None
+    if title:
+        print_divider(thin=True)
+        print(f"{Neon.PROMPT}{title}{Neon.RESET}")
+    for i, opt in enumerate(options, 1):
+        marker = Neon.SUCCESS + "▶ " if (default_idx and i == default_idx) else Neon.INFO + "  "
+        print(f"  {marker}{i}. {opt}{Neon.RESET}")
+    if allow_quit:
+        print(f"  {Neon.WARNING}  q. {t['menu_select_quit'] if t else 'quit'}{Neon.RESET}")
+    while True:
+        if default_idx:
+            choice = prompt_input("Choice / 選択", str(default_idx))
+        else:
+            choice = prompt_input("Choice / 選択", "")
+        if allow_quit and choice.lower() == "q":
+            return None
+        if not choice and default_idx:
+            return default_idx
+        if choice.isdigit() and 1 <= int(choice) <= len(options):
+            return int(choice)
+        print_warning("Please enter 1-{0}{1}".format(
+            len(options), " or q" if allow_quit else ""))
+
+
+def run_command(cmd: List[str], cwd: Optional[Path] = None, capture: bool = False, env: Optional[Dict[str, str]] = None) -> Tuple[int, str, str]:
     """Run a command and return (returncode, stdout, stderr)"""
     try:
         if capture:
-            result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+            result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, env=env)
             return result.returncode, result.stdout, result.stderr
         else:
-            result = subprocess.run(cmd, cwd=cwd, text=True)
+            result = subprocess.run(cmd, cwd=cwd, text=True, env=env)
             return result.returncode, "", ""
     except FileNotFoundError:
         return -1, "", "command not found"
@@ -416,21 +431,7 @@ CONFIG_SCHEMA: Dict[str, Dict[str, object]] = {
 
 
 def get_token(cfg: Dict[str, object], t: Dict[str, str], interactive: bool = True) -> str:
-    """GitHub トークンを取得する。
-    優先順位: 環境変数(token_env) > 設定ファイル保存値(gitpush.token) > 対話入力(保存可)
-    """
-    import os
-    env_name = cfg.get("token_env", "GITHUB_TOKEN")
-    tok = os.environ.get(env_name, "")
-    if tok:
-        print_info(t["token_from_env"])
-        return tok
-
-    # 設定ファイルに保存済み？
-    saved = cfg.get("token", "")
-    if saved:
-        return saved
-
+    """GitHub トークンを取得する。常に対話で入力を促す（環境変数/保存値は使わない）。"""
     if not interactive:
         print_warning(t["token_empty_skip"])
         return ""
@@ -575,7 +576,7 @@ def scan_secret_literals(project_dir: Path, t: Dict[str, str]) -> bool:
     if len(hits) > 10:
         print_warning(f"  ... and {len(hits) - 10} more")
     print_warning(t["secret_in_code_detail"])
-    return prompt_yes_no(t["push_confirm"], default_no=True)
+    return False
 
 
 def scan_secret_files(project_dir: Path, t: Dict[str, str]) -> bool:
@@ -595,10 +596,10 @@ def scan_secret_files(project_dir: Path, t: Dict[str, str]) -> bool:
     for h in hits:
         print_warning(h)
     print_warning(t["secret_file_detail"])
-    return prompt_yes_no(t["push_confirm"], default_no=True)
+    return False
 
 
-def check_gitignore_gap(project_dir: Path, t: Dict[str, str]) -> None:
+def check_gitignore_gap(project_dir: Path, t: Dict[str, str], non_interactive: bool = False) -> None:
     """既存 .gitignore に機密パターンが足りなければ追記を提案。"""
     gitignore_path = project_dir / ".gitignore"
     if not gitignore_path.exists():
@@ -609,7 +610,7 @@ def check_gitignore_gap(project_dir: Path, t: Dict[str, str]) -> None:
     if not missing:
         return
     print_warning(t["gitignore_gap"])
-    if not prompt_yes_no("Continue / 続行", default_no=True):
+    if not non_interactive and not prompt_yes_no("Continue / 続行", default_no=True):
         return
     with open(gitignore_path, "a", encoding="utf-8") as f:
         f.write("\n# Added by Safe Git Push\n")
@@ -953,103 +954,19 @@ def list_repos(token: str, t: Dict[str, str]) -> list:
 
 
 def select_repo(token: str, t: Dict[str, str]) -> str:
-    """既存リポジトリ一覧から数字で選択 / 0 で新規作成。"""
+    """既存リポジトリ一覧から数字で選択 / 0 で新規作成 / q で終了。"""
     repos = list_repos(token, t)
-    print_divider(thin=True)
-    print(f"{Neon.PROMPT}{t['repo_list_title']}{Neon.RESET}")
     if not repos:
         print_info(t["repo_list_empty"])
         return ""
-    for i, name in enumerate(repos, 1):
-        print(f"  {Neon.INFO}{t['settings_item'].format(i, name)}{Neon.RESET}")
-    print(f"  {Neon.INFO}{t['settings_item'].format(0, '(new)')}{Neon.RESET}")
-    while True:
-        choice = prompt_input("Choice / 選択 [0-{0}]".format(len(repos)), "0")
-        if choice == "0":
-            return ""
-        if choice.isdigit() and 1 <= int(choice) <= len(repos):
-            return repos[int(choice) - 1]
-        print_warning("Please enter 0-{0} / 0-{0} を入力".format(len(repos)))
-
-
-SETTINGS_ITEMS = [
-    ("default_visibility", "str", "公開/非公開 (public/private)"),
-    ("default_branch", "str", "デフォルトブランチ名"),
-    ("default_message", "str", "コミットメッセージ"),
-    ("token", "str", "GitHub トークン"),
-    ("auto_hook", "bool", "pre-commit フック自動登録"),
-    ("auto_ci", "bool", "CI ワークフロー自動生成"),
-    ("scan_secrets", "bool", "ソース内秘密スキャン"),
-    ("warn_secret_files", "bool", "機密ファイル警告"),
-    ("check_gitignore_gap", "bool", ".gitignore ギャップチェック"),
-    ("dry_run", "bool", "dry-run プレビュー"),
-    ("scan_history", "bool", "過去履歴スキャン"),
-    ("update_channel", "str", "更新チャンネル (stable/beta)"),
-    ("provider", "str", "プロバイダ (github/gitlab)"),
-    ("extra_remotes", "list", "追加リモート (カンマ区切り)"),
-    ("log_file", "str", "ログファイル名"),
-]
-
-
-def settings_menu(cfg: Dict[str, object], t: Dict[str, str]) -> None:
-    """対話式設定メニュー（初心者/上級者モード）。"""
-    print_divider()
-    print(f"{Neon.TITLE}  {t['settings_title']}{Neon.RESET}")
-    print(f"{Neon.PROMPT}{t['settings_mode']}{Neon.RESET}")
-    for opt in t["settings_mode_options"]:
-        print(f"  {Neon.INFO}{opt}{Neon.RESET}")
-    mode = prompt_input("Choice / 選択 [1-2]", "1")
-    advanced = mode == "2"
-
-    items = SETTINGS_ITEMS if advanced else SETTINGS_ITEMS[:4]
-    while True:
-        print_divider(thin=True)
-        for i, (key, _, label) in enumerate(items, 1):
-            cur = cfg.get(key, "")
-            line = f"{label} = {cur}"
-            print(f"{Neon.INFO}{t['settings_item'].format(i, line)}{Neon.RESET}")
-        print(f"{Neon.INFO}{t['settings_item'].format(0, t['settings_done'])}{Neon.RESET}")
-        choice = prompt_input(t["settings_select"], "0")
-        if choice == "0":
-            break
-        if not (choice.isdigit() and 1 <= int(choice) <= len(items)):
-            print_warning("Please enter 0-{0}".format(len(items)))
-            continue
-        key, typ, label = items[int(choice) - 1]
-        new_val = prompt_input(t["settings_value"].format(label), str(cfg.get(key, "")))
-        if typ == "bool":
-            cfg[key] = new_val.lower() in ("true", "1", "yes", "y")
-        elif typ == "list":
-            cfg[key] = [x.strip() for x in new_val.split(",") if x.strip()]
-        else:
-            cfg[key] = new_val
-        # 保存
-        _save_setting_to_config(key, cfg[key])
-
-    print_success(t["settings_done"])
-
-
-def _save_setting_to_config(key: str, val: object) -> None:
-    """設定をプロジェクトの gitpush.toml に保存する（token は別関数）。"""
-    try:
-        if key == "token":
-            return
-        project_dir = Path.cwd()
-        cfg_path = project_dir / "gitpush.toml"
-        lines = []
-        if cfg_path.exists():
-            lines = cfg_path.read_text(encoding="utf-8").splitlines()
-        lines = [ln for ln in lines if not ln.strip().startswith(f"{key} ")]
-        if isinstance(val, bool):
-            val_str = "true" if val else "false"
-        elif isinstance(val, list):
-            val_str = "[" + ", ".join(f'"{v}"' for v in val) + "]"
-        else:
-            val_str = f'"{val}"'
-        lines.append(f"{key} = {val_str}")
-        cfg_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    except Exception:
-        pass
+    options = list(repos) + ["(new / 新規作成)"]
+    idx = menu_select(options, default_idx=0,
+                      title=t["repo_list_title"], t=t, allow_quit=True)
+    if idx is None:
+        sys.exit(0)
+    if idx == len(repos) + 1:
+        return ""
+    return repos[idx - 1]
 
 
 def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict[str, str], provider: str = "github", token: str = "") -> Optional[str]:
@@ -1081,9 +998,15 @@ def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict
         print_warning(t["gh_missing"])
         return None
 
+    # 入力されたトークンを gh に渡す（環境変数を勝手に探させない）
+    gh_env = dict(os.environ)
+    if token:
+        gh_env["GH_TOKEN"] = token
+        gh_env["GITHUB_TOKEN"] = token
+
     # 同名リポジトリが既に存在するか確認
     view_code, view_out, _ = run_command(
-        ["gh", "repo", "view", repo_name, "--json", "url"], cwd=project_dir, capture=True
+        ["gh", "repo", "view", repo_name, "--json", "url"], cwd=project_dir, capture=True, env=gh_env
     )
     if view_code == 0 and "url" in view_out:
         print_warning(t["repo_exists"])
@@ -1101,7 +1024,7 @@ def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict
     vis_flag = "--private" if private else "--public"
     code, _, err = run_command(
         ["gh", "repo", "create", repo_name, vis_flag, "--source=.", "--remote=origin", "--push=false"],
-        cwd=project_dir,
+        cwd=project_dir, env=gh_env,
     )
     if code != 0:
         print_warning(t["repo_create_failed"])
@@ -1123,11 +1046,11 @@ def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict
 
 def _maybe_ssh(url: str, project_dir: Path, t: Dict[str, str]) -> str:
     """HTTPS / SSH の選択。SSH を選んだら remote URL を書き換える。"""
-    print(f"{Neon.PROMPT}{t['repo_url_style']}{Neon.RESET}")
-    for opt in t["repo_url_style_options"]:
-        print(f"  {Neon.INFO}{opt}{Neon.RESET}")
-    choice = prompt_input("Choice / 選択 [1-2]", "1")
-    if choice in ("2", "ssh"):
+    idx = menu_select(t["repo_url_style_options"], default_idx=1,
+                      title=t["repo_url_style"], t=t, allow_quit=True)
+    if idx is None:
+        sys.exit(0)
+    if idx == 2:
         # https://github.com/user/repo.git -> git@github.com:user/repo.git
         import re
         m = re.match(r"https://github\.com/([^/]+)/(.+?)(?:\.git)?$", url)
@@ -1240,18 +1163,11 @@ def select_language() -> str:
     print_divider()
     print(f"{Neon.TITLE}  Safe Git Push - Language Selection{Neon.RESET}")
     print_divider()
-    print(f"{Neon.PROMPT}Select language / 言語を選択してください:{Neon.RESET}")
-    print(f"  {Neon.INFO}1. 日本語{Neon.RESET}")
-    print(f"  {Neon.INFO}2. English{Neon.RESET}")
-    print_divider(thin=True)
-
-    while True:
-        choice = prompt_input("Choice / 選択 [1-2]", "1")
-        if choice in ("1", "ja", "japanese", "日本語"):
-            return "ja"
-        elif choice in ("2", "en", "english"):
-            return "en"
-        print_warning("Please enter 1 or 2 / 1 または 2 を入力してください")
+    idx = menu_select(["日本語", "English"], default_idx=1,
+                      title="Select language / 言語を選択", t=TEXTS["ja"], allow_quit=True)
+    if idx is None:
+        sys.exit(0)
+    return "ja" if idx == 1 else "en"
 
 
 def main():
@@ -1298,10 +1214,6 @@ def main():
     cfg = load_config(project_dir, t)
     validate_config(cfg, t)
     token = get_token(cfg, t, interactive=not non_interactive)
-    # 設定メニュー（対話モードのみ）
-    if not non_interactive:
-        if prompt_yes_no(t["settings_menu_prompt"], default_no=True):
-            settings_menu(cfg, t)
     default_visibility = cfg.get("default_visibility", "public")
     default_branch = cfg.get("default_branch", "main")
     auto_hook = cfg.get("auto_hook", True)
@@ -1320,27 +1232,26 @@ def main():
     log_lines = []
 
     # 1. Ensure .gitignore
+    print_step("1. " + t["git_init"])
     ensure_gitignore(project_dir, t)
 
     # 2. Scan .env and create .env.example
     scan_env_and_create_example(project_dir, t)
 
     # 2b. Secret literal scan (source code)
+    secret_issues = False
     if scan_secrets:
         if not scan_secret_literals(project_dir, t):
-            print_warning(t["secret_in_code_detail"])
-            if not (non_interactive or prompt_yes_no(t["push_confirm"], default_no=True)):
-                sys.exit(1)
+            secret_issues = True
 
     # 2c. Secret-file warning
     if warn_secret_files:
-        if scan_secret_files(project_dir, t):
-            if not (non_interactive or prompt_yes_no(t["push_confirm"], default_no=True)):
-                sys.exit(1)
+        if not scan_secret_files(project_dir, t):
+            secret_issues = True
 
     # 2d. .gitignore gap check
     if check_gitignore_gap_enabled:
-        check_gitignore_gap(project_dir, t)
+        check_gitignore_gap(project_dir, t, non_interactive=non_interactive)
 
     print_divider(thin=True)
 
@@ -1367,21 +1278,15 @@ def main():
     elif args.private:
         private = True
     else:
-        default_vis_choice = "2" if default_visibility == "private" else "1"
-        print(f"{Neon.PROMPT}{t['repo_visibility_prompt']}{Neon.RESET}")
-        for opt in t["repo_visibility_options"]:
-            print(f"  {Neon.INFO}{opt}{Neon.RESET}")
-        while True:
-            vis_choice = prompt_input("Choice / 選択 [1-2]", default_vis_choice)
-            if vis_choice in ("1", "public"):
-                private = False
-                break
-            elif vis_choice in ("2", "private"):
-                private = True
-                break
-            print_warning("Please enter 1 or 2 / 1 または 2 を入力してください")
+        default_vis_idx = 2 if default_visibility == "private" else 1
+        idx = menu_select(t["repo_visibility_options"], default_idx=default_vis_idx,
+                          title=t["repo_visibility_prompt"], t=t, allow_quit=True)
+        if idx is None:
+            sys.exit(0)
+        private = (idx == 2)
 
-    # 3c. Try auto-create
+    # 3c. Try auto-create (gh repo create --source=. が git を必要とするため先に init)
+    init_git_repo(project_dir, t)
     repo_url = create_github_repo(project_dir, repo_name, private, t, provider=provider, token=token)
 
     # 3d. Fallback: manual URL input
@@ -1410,10 +1315,7 @@ def main():
 
     print_divider(thin=True)
 
-    # 5. Git operations
-    if not init_git_repo(project_dir, t):
-        sys.exit(1)
-
+    # 5. Git operations (git init は step 3c で済ませている)
     if auto_hook:
         install_pre_commit_hook(project_dir, t)
 
@@ -1437,7 +1339,12 @@ def main():
     # 6. Dry-run preview
     if dry_run_enabled:
         print_step(t["dry_run_title"])
-        run_command(["git", "diff", "--stat", "HEAD"], cwd=project_dir)
+        code, _, _ = run_command(["git", "rev-parse", "HEAD"], cwd=project_dir, capture=True)
+        if code == 0:
+            run_command(["git", "diff", "--stat", "HEAD"], cwd=project_dir)
+        else:
+            # まだコミットが無い（git init 直後）場合はステータスで代用
+            run_command(["git", "status", "--short"], cwd=project_dir)
 
     # 6b. History scan (if enabled)
     if scan_history_enabled:
@@ -1446,7 +1353,17 @@ def main():
 
     # 7. Confirm push
     print_divider()
-    if not non_interactive and not prompt_yes_no(t["push_confirm"], default_no=True):
+    if non_interactive:
+        pass
+    elif secret_issues:
+        print_warning(t["secret_in_code_detail"])
+        if not prompt_yes_no(t["push_confirm"], default_no=True):
+            print_warning(t["push_cancelled"])
+            print_divider()
+            print(f"{Neon.SUCCESS}{t['done']}{Neon.RESET}")
+            press_enter_to_exit(t)
+            return
+    elif not prompt_yes_no(t["push_confirm"], default_no=True):
         print_warning(t["push_cancelled"])
         print_divider()
         print(f"{Neon.SUCCESS}{t['done']}{Neon.RESET}")

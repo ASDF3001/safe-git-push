@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 # スクリプトバージョン（self-update で使用）
-SCRIPT_VERSION = "1.2.0"
+SCRIPT_VERSION = "1.2.1"
 # 自分自身を更新する際の raw URL（linux / windows で上書きされる）
 SELF_UPDATE_RAW_URL = "https://raw.githubusercontent.com/ASDF3001/safe-git-push/main/linux/safe_git_push.py"
 
