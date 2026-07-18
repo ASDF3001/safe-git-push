@@ -129,6 +129,12 @@ TEXTS = {
         "log_written": "ログを gitpush.log に書きました",
         "provider_gitlab": "GitLab リポジトリを作成しています...",
         "uninstall_done": "アンインストールが完了しました",
+        "repo_exists": "その名前のリポジトリは既に存在します。それを使いますか？ [y/N]:",
+        "repo_exists_url": "既存リポジトリを使用します: ",
+        "gh_not_authed": "gh でログインしていません。以下を実行してください:",
+        "repo_created_url": "リポジトリを作成しました: ",
+        "repo_url_style": "リモート URL の形式を選択してください:",
+        "repo_url_style_options": ["1. HTTPS（おすすめ・トークン利用）", "2. SSH（鍵登録済みの場合）"],
     },
     "en": {
         "title": "Welcome to Safe Git Push!",
@@ -198,6 +204,12 @@ TEXTS = {
         "log_written": "Log written to gitpush.log",
         "provider_gitlab": "Creating GitLab repository...",
         "uninstall_done": "Uninstall completed",
+        "repo_exists": "A repo with that name already exists. Use it instead? [y/N]:",
+        "repo_exists_url": "Using existing repo: ",
+        "gh_not_authed": "You are not logged in to gh. Run this first:",
+        "repo_created_url": "Repository created: ",
+        "repo_url_style": "Select remote URL style:",
+        "repo_url_style_options": ["1. HTTPS (recommended, uses token)", "2. SSH (if key is registered)"],
     }
 }
 
@@ -867,6 +879,29 @@ def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict
         print_warning(t["gh_missing"])
         return None
 
+    # 認証状態をチェック（未認証なら明示案内）
+    auth_code, _, _ = run_command(["gh", "auth", "status"], capture=True)
+    if auth_code != 0:
+        print_warning(t["gh_not_authed"])
+        print_info("  gh auth login")
+        return None
+
+    # 同名リポジトリが既に存在するか確認
+    view_code, view_out, _ = run_command(
+        ["gh", "repo", "view", repo_name, "--json", "url"], cwd=project_dir, capture=True
+    )
+    if view_code == 0 and "url" in view_out:
+        print_warning(t["repo_exists"])
+        if prompt_yes_no(t["push_confirm"], default_no=True):
+            # 既存リポの URL を origin に設定
+            import re as _re
+            m = _re.search(r'"url"\s*:\s*"([^"]+)"', view_out)
+            existing_url = m.group(1) if m else f"https://github.com/{repo_name}"
+            run_command(["git", "remote", "add", "origin", existing_url], cwd=project_dir)
+            print_success(t["repo_exists_url"] + existing_url)
+            return _maybe_ssh(existing_url, project_dir, t)
+        # 使わない場合は新規作成へ
+
     print_step(t["repo_creating"])
     vis_flag = "--private" if private else "--public"
     code, _, err = run_command(
@@ -883,11 +918,30 @@ def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict
     # remote の URL を取得
     code, out, _ = run_command(["git", "remote", "get-url", "origin"], cwd=project_dir, capture=True)
     if code == 0 and out.strip():
-        print_success(t["repo_created"])
-        return out.strip()
+        url = out.strip()
+        print_success(t["repo_created_url"] + url)
+        return _maybe_ssh(url, project_dir, t)
 
     print_warning(t["repo_create_failed"])
     return None
+
+
+def _maybe_ssh(url: str, project_dir: Path, t: Dict[str, str]) -> str:
+    """HTTPS / SSH の選択。SSH を選んだら remote URL を書き換える。"""
+    print(f"{Neon.PROMPT}{t['repo_url_style']}{Neon.RESET}")
+    for opt in t["repo_url_style_options"]:
+        print(f"  {Neon.INFO}{opt}{Neon.RESET}")
+    choice = prompt_input("Choice / 選択 [1-2]", "1")
+    if choice in ("2", "ssh"):
+        # https://github.com/user/repo.git -> git@github.com:user/repo.git
+        import re
+        m = re.match(r"https://github\.com/([^/]+)/(.+?)(?:\.git)?$", url)
+        if m:
+            ssh_url = f"git@{m.group(1)}:{m.group(2)}.git"
+            run_command(["git", "remote", "set-url", "origin", ssh_url], cwd=project_dir)
+            print_success(f"Remote set to SSH: {ssh_url}")
+            return ssh_url
+    return url
 
 
 def setup_git_remote(project_dir: Path, repo_url: str, t: Dict[str, str]) -> bool:
@@ -1074,8 +1128,9 @@ def main():
     if non_interactive and args.repo:
         repo_name = args.repo
     else:
+        default_repo = project_dir.name
         while True:
-            repo_name = prompt_input(t["repo_name_prompt"])
+            repo_name = prompt_input(t["repo_name_prompt"], default_repo)
             if repo_name:
                 break
             print_error(t["repo_name_empty"])
