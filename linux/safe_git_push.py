@@ -57,79 +57,79 @@ except ImportError:
 # ============================================================================
 TEXTS = {
     "ja": {
-        "title": "🛡️  Safe Git Push へようこそ！",
+        "title": "Safe Git Push へようこそ",
         "subtitle": "機密情報を守りながら GitHub へプッシュします",
         "lang_prompt": "言語を選択してください / Select language:",
         "lang_options": ["1. 日本語", "2. English"],
         "lang_selected": "日本語を選択しました",
-        "gitignore_created": "✅ .gitignore を作成しました",
-        "gitignore_exists": "ℹ️  .gitignore は既に存在します",
-        "env_found": "📄 .env ファイルが見つかりました",
-        "env_not_found": "ℹ️  .env ファイルが見つかりません（スキップ）",
-        "env_example_created": "✅ .env.example を生成しました",
+        "gitignore_created": ".gitignore を作成しました",
+        "gitignore_exists": ".gitignore は既に存在します",
+        "env_found": ".env ファイルが見つかりました",
+        "env_not_found": ".env ファイルが見つかりません（スキップ）",
+        "env_example_created": ".env.example を生成しました",
         "repo_url_prompt": "GitHub リポジトリの URL を入力してください (例: https://github.com/user/repo.git)",
-        "repo_url_empty": "❌ URL は必須です",
+        "repo_url_empty": "URL は必須です",
         "repo_name_prompt": "作成するリポジトリ名を入力してください",
-        "repo_name_empty": "❌ リポジトリ名は必須です",
+        "repo_name_empty": "リポジトリ名は必須です",
         "repo_visibility_prompt": "リポジトリの公開設定を選択してください",
         "repo_visibility_options": ["1. Public（世界に公開）", "2. Private（非公開）"],
-        "repo_creating": "🌐 GitHub にリポジトリを作成しています...",
-        "repo_created": "✅ リポジトリを作成しました",
-        "repo_create_failed": "⚠️  リポジトリの自動作成に失敗しました（URLを手入力できます）",
-        "gh_missing": "ℹ️  gh が見つからないか未認証です。URLを直接入力してください",
-        "auth_note": "💡 自分のトークンで自動作成したい場合: gh auth login を実行してください",
+        "repo_creating": "GitHub にリポジトリを作成しています...",
+        "repo_created": "リポジトリを作成しました",
+        "repo_create_failed": "リポジトリの自動作成に失敗しました（URLを手入力できます）",
+        "gh_missing": "gh が見つからないか未認証です。URLを直接入力してください",
+        "auth_note": "自分のトークンで自動作成したい場合: gh auth login を実行してください",
         "branch_prompt": "ブランチ名を入力してください [main]",
-        "git_init": "🔧 Git リポジトリを初期化しています...",
-        "git_remote_add": "🔗 リモートを追加しています...",
-        "git_branch_rename": "🌿 ブランチ名を変更しています...",
-        "git_add": "📦 ファイルをステージングしています...",
-        "git_commit": "💾 コミットを作成しています...",
-        "push_confirm": "🚀 GitHub にプッシュしますか？ [y/N]:",
-        "push_cancelled": "⏸️  プッシュをキャンセルしました",
-        "pushing": "⬆️  プッシュしています...",
-        "push_success": "✅ プッシュが完了しました！",
-        "push_failed": "❌ プッシュに失敗しました",
-        "error_git_not_found": "❌ git が見つかりません。インストールしてください。",
-        "error_not_git_repo": "❌ ここは Git リポジトリではありません。",
-        "done": "🎉 完了！",
+        "git_init": "Git リポジトリを初期化しています...",
+        "git_remote_add": "リモートを追加しています...",
+        "git_branch_rename": "ブランチ名を変更しています...",
+        "git_add": "ファイルをステージングしています...",
+        "git_commit": "コミットを作成しています...",
+        "push_confirm": "GitHub にプッシュしますか？ [y/N]:",
+        "push_cancelled": "プッシュをキャンセルしました",
+        "pushing": "プッシュしています...",
+        "push_success": "プッシュが完了しました",
+        "push_failed": "プッシュに失敗しました",
+        "error_git_not_found": "git が見つかりません。インストールしてください。",
+        "error_not_git_repo": "ここは Git リポジトリではありません。",
+        "done": "完了",
         "press_enter": "Enter キーで終了...",
     },
     "en": {
-        "title": "🛡️  Welcome to Safe Git Push!",
+        "title": "Welcome to Safe Git Push!",
         "subtitle": "Push to GitHub while protecting sensitive data",
         "lang_prompt": "Select language / 言語を選択してください:",
         "lang_options": ["1. 日本語", "2. English"],
         "lang_selected": "English selected",
-        "gitignore_created": "✅ Created .gitignore",
-        "gitignore_exists": "ℹ️  .gitignore already exists",
-        "env_found": "📄 Found .env file",
-        "env_not_found": "ℹ️  No .env file found (skipping)",
-        "env_example_created": "✅ Generated .env.example",
+        "gitignore_created": "Created .gitignore",
+        "gitignore_exists": ".gitignore already exists",
+        "env_found": "Found .env file",
+        "env_not_found": "No .env file found (skipping)",
+        "env_example_created": "Generated .env.example",
         "repo_url_prompt": "Enter GitHub repository URL (e.g., https://github.com/user/repo.git)",
-        "repo_url_empty": "❌ URL is required",
+        "repo_url_empty": "URL is required",
         "repo_name_prompt": "Enter the repository name to create",
-        "repo_name_empty": "❌ Repository name is required",
+        "repo_name_empty": "Repository name is required",
         "repo_visibility_prompt": "Select repository visibility",
         "repo_visibility_options": ["1. Public (open to the world)", "2. Private (hidden)"],
-        "repo_creating": "🌐 Creating repository on GitHub...",
-        "repo_created": "✅ Repository created",
-        "repo_create_failed": "⚠️  Failed to auto-create repo (you can enter URL manually)",
-        "gh_missing": "ℹ️  gh not found or not authenticated. Enter URL directly",
-        "auth_note": "💡 To auto-create with your token, run: gh auth login",
+        "repo_creating": "Creating repository on GitHub...",
+        "repo_created": "Repository created",
+        "repo_create_failed": "Failed to auto-create repo (you can enter URL manually)",
+        "gh_missing": "gh not found or not authenticated. Enter URL directly",
+        "auth_note": "To auto-create with your token, run: gh auth login",
         "branch_prompt": "Enter branch name [main]",
-        "git_init": "🔧 Initializing Git repository...",
-        "git_remote_add": "🔗 Adding remote...",
-        "git_branch_rename": "🌿 Renaming branch...",
-        "git_add": "📦 Staging files...",
-        "git_commit": "💾 Creating commit...",
-        "push_confirm": "🚀 Push to GitHub? [y/N]:",
-        "push_cancelled": "⏸️  Push cancelled",
-        "pushing": "⬆️  Pushing...",
-        "push_success": "✅ Push completed successfully!",
-        "push_failed": "❌ Push failed",
-        "error_git_not_found": "❌ git not found. Please install git.",
-        "error_not_git_repo": "❌ Not a Git repository.",
-        "done": "🎉 Done!",
+        "git_init": "Initializing Git repository...",
+        "git_remote_add": "Adding remote...",
+        "git_branch_rename": "Renaming branch...",
+        "git_add": "Staging files...",
+        "git_commit": "Creating commit...",
+        "push_confirm": "Push to GitHub? [y/N]:",
+        "push_cancelled": "Push cancelled",
+        "pushing": "Pushing...",
+        "push_success": "Push completed successfully!",
+        "push_failed": "Push failed",
+        "error_git_not_found": "git not found. Please install git.",
+        "error_not_git_repo": "Not a Git repository.",
+        "done": "Done!",
         "press_enter": "Press Enter to exit...",
     }
 }
@@ -163,23 +163,23 @@ def print_title(t: Dict[str, str], lang: str):
 
 
 def print_step(msg: str):
-    print(f"{Neon.INFO}▶ {msg}{Neon.RESET}")
+    print(f"{Neon.INFO}> {msg}{Neon.RESET}")
 
 
 def print_success(msg: str):
-    print(f"{Neon.SUCCESS}✓ {msg}{Neon.RESET}")
+    print(f"{Neon.SUCCESS}[OK] {msg}{Neon.RESET}")
 
 
 def print_warning(msg: str):
-    print(f"{Neon.WARNING}⚠ {msg}{Neon.RESET}")
+    print(f"{Neon.WARNING}[!] {msg}{Neon.RESET}")
 
 
 def print_info(msg: str):
-    print(f"{Neon.INFO}ℹ {msg}{Neon.RESET}")
+    print(f"{Neon.INFO}[i] {msg}{Neon.RESET}")
 
 
 def print_error(msg: str):
-    print(f"{Neon.ERROR}✗ {msg}{Neon.RESET}")
+    print(f"{Neon.ERROR}[X] {msg}{Neon.RESET}")
 
 
 def prompt_input(prompt: str, default: str = "") -> str:
@@ -458,7 +458,7 @@ def git_push(project_dir: Path, branch_name: str, t: Dict[str, str]) -> bool:
 # ============================================================================
 def select_language() -> str:
     print_divider()
-    print(f"{Neon.TITLE}  🛡️  Safe Git Push - Language Selection{Neon.RESET}")
+    print(f"{Neon.TITLE}  Safe Git Push - Language Selection{Neon.RESET}")
     print_divider()
     print(f"{Neon.PROMPT}Select language / 言語を選択してください:{Neon.RESET}")
     print(f"  {Neon.INFO}1. 日本語{Neon.RESET}")
