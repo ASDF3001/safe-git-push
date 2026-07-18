@@ -138,6 +138,17 @@ TEXTS = {
         "token_invalid": "警告: トークンの形式が不正です（ghp_ 等で始まるはず）",
         "token_from_env": "環境変数からトークンを読み込みました",
         "token_empty_skip": "トークンが無いので、URL を手動入力します",
+        "repo_list_title": "既存のリポジトリ一覧（数字で選択 / 0 で新規作成）",
+        "repo_list_empty": "既存リポジトリが見つかりません（0 で新規作成）",
+        "repo_list_failed": "リポジトリ一覧の取得に失敗しました（新規作成または URL 手入力）",
+        "settings_title": "設定メニュー",
+        "settings_mode": "モードを選択:",
+        "settings_mode_options": ["1. 初心者モード（基本のみ）", "2. 上級者モード（すべて）"],
+        "settings_done": "設定を保存しました",
+        "settings_item": "  {0}. {1}",
+        "settings_select": "変更する項目の数字（完了は 0）",
+        "settings_value": "{0} の新しい値を入力",
+        "settings_menu_prompt": "設定メニューを開きますか？ [y/N]:",
     },
     "en": {
         "title": "Welcome to Safe Git Push!",
@@ -216,6 +227,17 @@ TEXTS = {
         "token_invalid": "Warning: token format looks wrong (should start with ghp_ etc.)",
         "token_from_env": "Loaded token from environment variable",
         "token_empty_skip": "No token given, will ask for URL manually",
+        "repo_list_title": "Existing repositories (pick by number / 0 for new):",
+        "repo_list_empty": "No existing repos found (0 to create new)",
+        "repo_list_failed": "Failed to list repos (create new or enter URL manually)",
+        "settings_title": "Settings menu",
+        "settings_mode": "Select mode:",
+        "settings_mode_options": ["1. Beginner (basics only)", "2. Advanced (all options)"],
+        "settings_done": "Settings saved",
+        "settings_item": "  {0}. {1}",
+        "settings_select": "Number of item to change (0 to finish):",
+        "settings_value": "New value for {0}",
+        "settings_menu_prompt": "Open settings menu? [y/N]:",
     }
 }
 
@@ -912,6 +934,124 @@ def init_git_repo(project_dir: Path, t: Dict[str, str]) -> bool:
     return True
 
 
+def list_repos(token: str, t: Dict[str, str]) -> list:
+    """GitHub API で既存リポジトリ一覧を取得（token が必要）。"""
+    if not token:
+        return []
+    import urllib.request
+    import json
+    try:
+        req = urllib.request.Request(
+            "https://api.github.com/user/repos?per_page=100&sort=updated",
+            headers={"Authorization": f"token {token}", "Accept": "application/vnd.github+json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return [r.get("name", "") for r in data if r.get("name")]
+    except Exception:
+        return []
+
+
+def select_repo(token: str, t: Dict[str, str]) -> str:
+    """既存リポジトリ一覧から数字で選択 / 0 で新規作成。"""
+    repos = list_repos(token, t)
+    print_divider(thin=True)
+    print(f"{Neon.PROMPT}{t['repo_list_title']}{Neon.RESET}")
+    if not repos:
+        print_info(t["repo_list_empty"])
+        return ""
+    for i, name in enumerate(repos, 1):
+        print(f"  {Neon.INFO}{t['settings_item'].format(i, name)}{Neon.RESET}")
+    print(f"  {Neon.INFO}{t['settings_item'].format(0, '(new)')}{Neon.RESET}")
+    while True:
+        choice = prompt_input("Choice / 選択 [0-{0}]".format(len(repos)), "0")
+        if choice == "0":
+            return ""
+        if choice.isdigit() and 1 <= int(choice) <= len(repos):
+            return repos[int(choice) - 1]
+        print_warning("Please enter 0-{0} / 0-{0} を入力".format(len(repos)))
+
+
+SETTINGS_ITEMS = [
+    ("default_visibility", "str", "公開/非公開 (public/private)"),
+    ("default_branch", "str", "デフォルトブランチ名"),
+    ("default_message", "str", "コミットメッセージ"),
+    ("token", "str", "GitHub トークン"),
+    ("auto_hook", "bool", "pre-commit フック自動登録"),
+    ("auto_ci", "bool", "CI ワークフロー自動生成"),
+    ("scan_secrets", "bool", "ソース内秘密スキャン"),
+    ("warn_secret_files", "bool", "機密ファイル警告"),
+    ("check_gitignore_gap", "bool", ".gitignore ギャップチェック"),
+    ("dry_run", "bool", "dry-run プレビュー"),
+    ("scan_history", "bool", "過去履歴スキャン"),
+    ("update_channel", "str", "更新チャンネル (stable/beta)"),
+    ("provider", "str", "プロバイダ (github/gitlab)"),
+    ("extra_remotes", "list", "追加リモート (カンマ区切り)"),
+    ("log_file", "str", "ログファイル名"),
+]
+
+
+def settings_menu(cfg: Dict[str, object], t: Dict[str, str]) -> None:
+    """対話式設定メニュー（初心者/上級者モード）。"""
+    print_divider()
+    print(f"{Neon.TITLE}  {t['settings_title']}{Neon.RESET}")
+    print(f"{Neon.PROMPT}{t['settings_mode']}{Neon.RESET}")
+    for opt in t["settings_mode_options"]:
+        print(f"  {Neon.INFO}{opt}{Neon.RESET}")
+    mode = prompt_input("Choice / 選択 [1-2]", "1")
+    advanced = mode == "2"
+
+    items = SETTINGS_ITEMS if advanced else SETTINGS_ITEMS[:4]
+    while True:
+        print_divider(thin=True)
+        for i, (key, _, label) in enumerate(items, 1):
+            cur = cfg.get(key, "")
+            line = f"{label} = {cur}"
+            print(f"{Neon.INFO}{t['settings_item'].format(i, line)}{Neon.RESET}")
+        print(f"{Neon.INFO}{t['settings_item'].format(0, t['settings_done'])}{Neon.RESET}")
+        choice = prompt_input(t["settings_select"], "0")
+        if choice == "0":
+            break
+        if not (choice.isdigit() and 1 <= int(choice) <= len(items)):
+            print_warning("Please enter 0-{0}".format(len(items)))
+            continue
+        key, typ, label = items[int(choice) - 1]
+        new_val = prompt_input(t["settings_value"].format(label), str(cfg.get(key, "")))
+        if typ == "bool":
+            cfg[key] = new_val.lower() in ("true", "1", "yes", "y")
+        elif typ == "list":
+            cfg[key] = [x.strip() for x in new_val.split(",") if x.strip()]
+        else:
+            cfg[key] = new_val
+        # 保存
+        _save_setting_to_config(key, cfg[key])
+
+    print_success(t["settings_done"])
+
+
+def _save_setting_to_config(key: str, val: object) -> None:
+    """設定をプロジェクトの gitpush.toml に保存する（token は別関数）。"""
+    try:
+        if key == "token":
+            return
+        project_dir = Path.cwd()
+        cfg_path = project_dir / "gitpush.toml"
+        lines = []
+        if cfg_path.exists():
+            lines = cfg_path.read_text(encoding="utf-8").splitlines()
+        lines = [ln for ln in lines if not ln.strip().startswith(f"{key} ")]
+        if isinstance(val, bool):
+            val_str = "true" if val else "false"
+        elif isinstance(val, list):
+            val_str = "[" + ", ".join(f'"{v}"' for v in val) + "]"
+        else:
+            val_str = f'"{val}"'
+        lines.append(f"{key} = {val_str}")
+        cfg_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except Exception:
+        pass
+
+
 def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict[str, str], provider: str = "github", token: str = "") -> Optional[str]:
     """リポジトリを自動作成（github: gh / gitlab: glab）。成功時は remote URL、失敗時は None。"""
     visibility = "private" if private else "public"
@@ -1158,6 +1298,10 @@ def main():
     cfg = load_config(project_dir, t)
     validate_config(cfg, t)
     token = get_token(cfg, t, interactive=not non_interactive)
+    # 設定メニュー（対話モードのみ）
+    if not non_interactive:
+        if prompt_yes_no(t["settings_menu_prompt"], default_no=True):
+            settings_menu(cfg, t)
     default_visibility = cfg.get("default_visibility", "public")
     default_branch = cfg.get("default_branch", "main")
     auto_hook = cfg.get("auto_hook", True)
@@ -1204,12 +1348,18 @@ def main():
     if non_interactive and args.repo:
         repo_name = args.repo
     else:
-        default_repo = project_dir.name
-        while True:
-            repo_name = prompt_input(t["repo_name_prompt"], default_repo)
-            if repo_name:
-                break
-            print_error(t["repo_name_empty"])
+        # 既存リポジトリ一覧から選択（token があれば）
+        selected = select_repo(token, t)
+        if selected:
+            repo_name = selected
+            print_info(f"{t['repo_exists_url']}{selected}")
+        else:
+            default_repo = project_dir.name
+            while True:
+                repo_name = prompt_input(t["repo_name_prompt"], default_repo)
+                if repo_name:
+                    break
+                print_error(t["repo_name_empty"])
 
     # visibility
     if args.public:

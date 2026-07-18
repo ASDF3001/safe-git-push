@@ -102,6 +102,7 @@ TEXTS = {
         "config_not_found": "設定ファイルが見つかりません（デフォルトを使用）",
         "config_error": "設定ファイルの読み込みに失敗しました（デフォルトを使用）",
         "config_validated": "設定値の検証に通過しました",
+        "config_global_loaded": "グローバル設定を適用しました (~/.config/gitpush.toml)",
         "config_unknown_key": "警告: 不明な設定キーを無視しました:",
         "config_bad_type": "警告: 設定の型が不正です:",
         "config_bad_value": "警告: 設定値が取り得ない値です:",
@@ -137,6 +138,17 @@ TEXTS = {
         "token_invalid": "警告: トークンの形式が不正です（ghp_ 等で始まるはず）",
         "token_from_env": "環境変数からトークンを読み込みました",
         "token_empty_skip": "トークンが無いので、URL を手動入力します",
+        "repo_list_title": "既存のリポジトリ一覧（数字で選択 / 0 で新規作成）",
+        "repo_list_empty": "既存リポジトリが見つかりません（0 で新規作成）",
+        "repo_list_failed": "リポジトリ一覧の取得に失敗しました（新規作成または URL 手入力）",
+        "settings_title": "設定メニュー",
+        "settings_mode": "モードを選択:",
+        "settings_mode_options": ["1. 初心者モード（基本のみ）", "2. 上級者モード（すべて）"],
+        "settings_done": "設定を保存しました",
+        "settings_item": "  {0}. {1}",
+        "settings_select": "変更する項目の数字（完了は 0）",
+        "settings_value": "{0} の新しい値を入力",
+        "settings_menu_prompt": "設定メニューを開きますか？ [y/N]:",
     },
     "en": {
         "title": "Welcome to Safe Git Push!",
@@ -179,6 +191,7 @@ TEXTS = {
         "config_not_found": "Config file not found (using defaults)",
         "config_error": "Failed to load config (using defaults)",
         "config_validated": "Config values validated",
+        "config_global_loaded": "Global config applied (~/.config/gitpush.toml)",
         "config_unknown_key": "Warning: unknown config key ignored:",
         "config_bad_type": "Warning: config value has wrong type:",
         "config_bad_value": "Warning: config value is not allowed:",
@@ -214,6 +227,17 @@ TEXTS = {
         "token_invalid": "Warning: token format looks wrong (should start with ghp_ etc.)",
         "token_from_env": "Loaded token from environment variable",
         "token_empty_skip": "No token given, will ask for URL manually",
+        "repo_list_title": "Existing repositories (pick by number / 0 for new):",
+        "repo_list_empty": "No existing repos found (0 to create new)",
+        "repo_list_failed": "Failed to list repos (create new or enter URL manually)",
+        "settings_title": "Settings menu",
+        "settings_mode": "Select mode:",
+        "settings_mode_options": ["1. Beginner (basics only)", "2. Advanced (all options)"],
+        "settings_done": "Settings saved",
+        "settings_item": "  {0}. {1}",
+        "settings_select": "Number of item to change (0 to finish):",
+        "settings_value": "New value for {0}",
+        "settings_menu_prompt": "Open settings menu? [y/N]:",
     }
 }
 
@@ -910,6 +934,124 @@ def init_git_repo(project_dir: Path, t: Dict[str, str]) -> bool:
     return True
 
 
+def list_repos(token: str, t: Dict[str, str]) -> list:
+    """GitHub API で既存リポジトリ一覧を取得（token が必要）。"""
+    if not token:
+        return []
+    import urllib.request
+    import json
+    try:
+        req = urllib.request.Request(
+            "https://api.github.com/user/repos?per_page=100&sort=updated",
+            headers={"Authorization": f"token {token}", "Accept": "application/vnd.github+json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return [r.get("name", "") for r in data if r.get("name")]
+    except Exception:
+        return []
+
+
+def select_repo(token: str, t: Dict[str, str]) -> str:
+    """既存リポジトリ一覧から数字で選択 / 0 で新規作成。"""
+    repos = list_repos(token, t)
+    print_divider(thin=True)
+    print(f"{Neon.PROMPT}{t['repo_list_title']}{Neon.RESET}")
+    if not repos:
+        print_info(t["repo_list_empty"])
+        return ""
+    for i, name in enumerate(repos, 1):
+        print(f"  {Neon.INFO}{t['settings_item'].format(i, name)}{Neon.RESET}")
+    print(f"  {Neon.INFO}{t['settings_item'].format(0, '(new)')}{Neon.RESET}")
+    while True:
+        choice = prompt_input("Choice / 選択 [0-{0}]".format(len(repos)), "0")
+        if choice == "0":
+            return ""
+        if choice.isdigit() and 1 <= int(choice) <= len(repos):
+            return repos[int(choice) - 1]
+        print_warning("Please enter 0-{0} / 0-{0} を入力".format(len(repos)))
+
+
+SETTINGS_ITEMS = [
+    ("default_visibility", "str", "公開/非公開 (public/private)"),
+    ("default_branch", "str", "デフォルトブランチ名"),
+    ("default_message", "str", "コミットメッセージ"),
+    ("token", "str", "GitHub トークン"),
+    ("auto_hook", "bool", "pre-commit フック自動登録"),
+    ("auto_ci", "bool", "CI ワークフロー自動生成"),
+    ("scan_secrets", "bool", "ソース内秘密スキャン"),
+    ("warn_secret_files", "bool", "機密ファイル警告"),
+    ("check_gitignore_gap", "bool", ".gitignore ギャップチェック"),
+    ("dry_run", "bool", "dry-run プレビュー"),
+    ("scan_history", "bool", "過去履歴スキャン"),
+    ("update_channel", "str", "更新チャンネル (stable/beta)"),
+    ("provider", "str", "プロバイダ (github/gitlab)"),
+    ("extra_remotes", "list", "追加リモート (カンマ区切り)"),
+    ("log_file", "str", "ログファイル名"),
+]
+
+
+def settings_menu(cfg: Dict[str, object], t: Dict[str, str]) -> None:
+    """対話式設定メニュー（初心者/上級者モード）。"""
+    print_divider()
+    print(f"{Neon.TITLE}  {t['settings_title']}{Neon.RESET}")
+    print(f"{Neon.PROMPT}{t['settings_mode']}{Neon.RESET}")
+    for opt in t["settings_mode_options"]:
+        print(f"  {Neon.INFO}{opt}{Neon.RESET}")
+    mode = prompt_input("Choice / 選択 [1-2]", "1")
+    advanced = mode == "2"
+
+    items = SETTINGS_ITEMS if advanced else SETTINGS_ITEMS[:4]
+    while True:
+        print_divider(thin=True)
+        for i, (key, _, label) in enumerate(items, 1):
+            cur = cfg.get(key, "")
+            line = f"{label} = {cur}"
+            print(f"{Neon.INFO}{t['settings_item'].format(i, line)}{Neon.RESET}")
+        print(f"{Neon.INFO}{t['settings_item'].format(0, t['settings_done'])}{Neon.RESET}")
+        choice = prompt_input(t["settings_select"], "0")
+        if choice == "0":
+            break
+        if not (choice.isdigit() and 1 <= int(choice) <= len(items)):
+            print_warning("Please enter 0-{0}".format(len(items)))
+            continue
+        key, typ, label = items[int(choice) - 1]
+        new_val = prompt_input(t["settings_value"].format(label), str(cfg.get(key, "")))
+        if typ == "bool":
+            cfg[key] = new_val.lower() in ("true", "1", "yes", "y")
+        elif typ == "list":
+            cfg[key] = [x.strip() for x in new_val.split(",") if x.strip()]
+        else:
+            cfg[key] = new_val
+        # 保存
+        _save_setting_to_config(key, cfg[key])
+
+    print_success(t["settings_done"])
+
+
+def _save_setting_to_config(key: str, val: object) -> None:
+    """設定をプロジェクトの gitpush.toml に保存する（token は別関数）。"""
+    try:
+        if key == "token":
+            return
+        project_dir = Path.cwd()
+        cfg_path = project_dir / "gitpush.toml"
+        lines = []
+        if cfg_path.exists():
+            lines = cfg_path.read_text(encoding="utf-8").splitlines()
+        lines = [ln for ln in lines if not ln.strip().startswith(f"{key} ")]
+        if isinstance(val, bool):
+            val_str = "true" if val else "false"
+        elif isinstance(val, list):
+            val_str = "[" + ", ".join(f'"{v}"' for v in val) + "]"
+        else:
+            val_str = f'"{val}"'
+        lines.append(f"{key} = {val_str}")
+        cfg_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except Exception:
+        pass
+
+
 def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict[str, str], provider: str = "github", token: str = "") -> Optional[str]:
     """リポジトリを自動作成（github: gh / gitlab: glab）。成功時は remote URL、失敗時は None。"""
     visibility = "private" if private else "public"
@@ -939,13 +1081,21 @@ def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict
         print_warning(t["gh_missing"])
         return None
 
-    # token があれば gh 認証チェックをスキップ（gh は GITHUB_TOKEN を自動使用）
-    if not token:
-        auth_code, _, _ = run_command(["gh", "auth", "status"], capture=True)
-        if auth_code != 0:
-            print_warning(t["gh_not_authed"])
-            print_info("  gh auth login")
-            return None
+    # 同名リポジトリが既に存在するか確認
+    view_code, view_out, _ = run_command(
+        ["gh", "repo", "view", repo_name, "--json", "url"], cwd=project_dir, capture=True
+    )
+    if view_code == 0 and "url" in view_out:
+        print_warning(t["repo_exists"])
+        if prompt_yes_no(t["push_confirm"], default_no=True):
+            # 既存リポの URL を origin に設定
+            import re as _re
+            m = _re.search(r'"url"\s*:\s*"([^"]+)"', view_out)
+            existing_url = m.group(1) if m else f"https://github.com/{repo_name}"
+            run_command(["git", "remote", "add", "origin", existing_url], cwd=project_dir)
+            print_success(t["repo_exists_url"] + existing_url)
+            return _maybe_ssh(existing_url, project_dir, t)
+        # 使わない場合は新規作成へ
 
     print_step(t["repo_creating"])
     vis_flag = "--private" if private else "--public"
@@ -963,11 +1113,30 @@ def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict
     # remote の URL を取得
     code, out, _ = run_command(["git", "remote", "get-url", "origin"], cwd=project_dir, capture=True)
     if code == 0 and out.strip():
-        print_success(t["repo_created"])
-        return out.strip()
+        url = out.strip()
+        print_success(t["repo_created_url"] + url)
+        return _maybe_ssh(url, project_dir, t)
 
     print_warning(t["repo_create_failed"])
     return None
+
+
+def _maybe_ssh(url: str, project_dir: Path, t: Dict[str, str]) -> str:
+    """HTTPS / SSH の選択。SSH を選んだら remote URL を書き換える。"""
+    print(f"{Neon.PROMPT}{t['repo_url_style']}{Neon.RESET}")
+    for opt in t["repo_url_style_options"]:
+        print(f"  {Neon.INFO}{opt}{Neon.RESET}")
+    choice = prompt_input("Choice / 選択 [1-2]", "1")
+    if choice in ("2", "ssh"):
+        # https://github.com/user/repo.git -> git@github.com:user/repo.git
+        import re
+        m = re.match(r"https://github\.com/([^/]+)/(.+?)(?:\.git)?$", url)
+        if m:
+            ssh_url = f"git@{m.group(1)}:{m.group(2)}.git"
+            run_command(["git", "remote", "set-url", "origin", ssh_url], cwd=project_dir)
+            print_success(f"Remote set to SSH: {ssh_url}")
+            return ssh_url
+    return url
 
 
 def setup_git_remote(project_dir: Path, repo_url: str, t: Dict[str, str]) -> bool:
@@ -1129,6 +1298,10 @@ def main():
     cfg = load_config(project_dir, t)
     validate_config(cfg, t)
     token = get_token(cfg, t, interactive=not non_interactive)
+    # 設定メニュー（対話モードのみ）
+    if not non_interactive:
+        if prompt_yes_no(t["settings_menu_prompt"], default_no=True):
+            settings_menu(cfg, t)
     default_visibility = cfg.get("default_visibility", "public")
     default_branch = cfg.get("default_branch", "main")
     auto_hook = cfg.get("auto_hook", True)
@@ -1175,11 +1348,18 @@ def main():
     if non_interactive and args.repo:
         repo_name = args.repo
     else:
-        while True:
-            repo_name = prompt_input(t["repo_name_prompt"])
-            if repo_name:
-                break
-            print_error(t["repo_name_empty"])
+        # 既存リポジトリ一覧から選択（token があれば）
+        selected = select_repo(token, t)
+        if selected:
+            repo_name = selected
+            print_info(f"{t['repo_exists_url']}{selected}")
+        else:
+            default_repo = project_dir.name
+            while True:
+                repo_name = prompt_input(t["repo_name_prompt"], default_repo)
+                if repo_name:
+                    break
+                print_error(t["repo_name_empty"])
 
     # visibility
     if args.public:
