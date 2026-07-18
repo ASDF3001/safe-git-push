@@ -340,14 +340,14 @@ def menu_select(options: List[str], default_idx: int = 0, title: str = "",
             len(options), " or q" if allow_quit else ""))
 
 
-def run_command(cmd: List[str], cwd: Optional[Path] = None, capture: bool = False) -> Tuple[int, str, str]:
+def run_command(cmd: List[str], cwd: Optional[Path] = None, capture: bool = False, env: Optional[Dict[str, str]] = None) -> Tuple[int, str, str]:
     """Run a command and return (returncode, stdout, stderr)"""
     try:
         if capture:
-            result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+            result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, env=env)
             return result.returncode, result.stdout, result.stderr
         else:
-            result = subprocess.run(cmd, cwd=cwd, text=True)
+            result = subprocess.run(cmd, cwd=cwd, text=True, env=env)
             return result.returncode, "", ""
     except FileNotFoundError:
         return -1, "", "command not found"
@@ -431,21 +431,7 @@ CONFIG_SCHEMA: Dict[str, Dict[str, object]] = {
 
 
 def get_token(cfg: Dict[str, object], t: Dict[str, str], interactive: bool = True) -> str:
-    """GitHub トークンを取得する。
-    優先順位: 環境変数(token_env) > 設定ファイル保存値(gitpush.token) > 対話入力(保存可)
-    """
-    import os
-    env_name = cfg.get("token_env", "GITHUB_TOKEN")
-    tok = os.environ.get(env_name, "")
-    if tok:
-        print_info(t["token_from_env"])
-        return tok
-
-    # 設定ファイルに保存済み？
-    saved = cfg.get("token", "")
-    if saved:
-        return saved
-
+    """GitHub トークンを取得する。常に対話で入力を促す（環境変数/保存値は使わない）。"""
     if not interactive:
         print_warning(t["token_empty_skip"])
         return ""
@@ -1012,9 +998,15 @@ def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict
         print_warning(t["gh_missing"])
         return None
 
+    # 入力されたトークンを gh に渡す（環境変数を勝手に探させない）
+    gh_env = dict(os.environ)
+    if token:
+        gh_env["GH_TOKEN"] = token
+        gh_env["GITHUB_TOKEN"] = token
+
     # 同名リポジトリが既に存在するか確認
     view_code, view_out, _ = run_command(
-        ["gh", "repo", "view", repo_name, "--json", "url"], cwd=project_dir, capture=True
+        ["gh", "repo", "view", repo_name, "--json", "url"], cwd=project_dir, capture=True, env=gh_env
     )
     if view_code == 0 and "url" in view_out:
         print_warning(t["repo_exists"])
@@ -1032,7 +1024,7 @@ def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict
     vis_flag = "--private" if private else "--public"
     code, _, err = run_command(
         ["gh", "repo", "create", repo_name, vis_flag, "--source=.", "--remote=origin", "--push=false"],
-        cwd=project_dir,
+        cwd=project_dir, env=gh_env,
     )
     if code != 0:
         print_warning(t["repo_create_failed"])

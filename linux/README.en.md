@@ -81,10 +81,8 @@ gitpush --yes --public --repo my-repo --message "Initial commit"
 2. Generate new token (classic)
 3. Note, Expiration = No expiration, check `repo` scope
 4. Generate token, copy `ghp_...`
-5. Save to `~/githubtoken.env` as `export GITHUB_TOKEN=ghp_...`
-6. `githubtoken.env` is gitignored, so it will not be pushed
 
-For `gh` auto-creation, also run `gh auth login`.
+The tool **prompts for the token on every run** (environment variables and saved values are not used). The entered token is saved to the project's `gitpush.toml` for reuse. `gh` auto-creation also uses this entered token, so `gh auth login` is not required.
 
 ## Advanced features (automation / v1.2.0)
 
@@ -95,7 +93,6 @@ Place a `gitpush.toml` config file in your project to change defaults:
 ```toml
 default_visibility = "private"   # initial repo visibility (public/private)
 default_branch = "main"          # default branch name
-token_env = "GITHUB_TOKEN"       # env var name to read
 auto_hook = true                 # auto-register pre-commit hook
 auto_ci = true                   # auto-generate GitHub Actions secret-scan
 self_update = true               # self-update check on launch

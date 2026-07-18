@@ -9,9 +9,6 @@ default_visibility = "public"
 # デフォルトブランチ名
 default_branch = "main"
 
-# 読み込む GitHub トークンの環境変数名
-token_env = "GITHUB_TOKEN"
-
 # pre-commit フックを自動登録するか
 auto_hook = true
 

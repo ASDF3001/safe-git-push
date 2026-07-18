@@ -81,10 +81,8 @@ gitpush --yes --public --repo my-repo --message "Initial commit"
 2. Generate new token (classic)
 3. Note 入力、Expiration は No expiration（永久）、scopes は `repo` にチェック
 4. Generate token で `ghp_...` をコピー
-5. `~/githubtoken.env` に `export GITHUB_TOKEN=ghp_...` と書く
-6. `githubtoken.env` は `.gitignore` で除外済みなので push されません
 
-`gh` での自動作成を使う場合は `gh auth login` も実行してください。
+ツールを起動すると **毎回トークン入力を求められます**（環境変数や保存値は使いません）。入力したトークンはプロジェクトの `gitpush.toml` に保存され、次回以降も再利用されます。`gh` でのリポジトリ自動作成もこの入力トークンを使うため、`gh auth login` は不要です。
 
 ## 高度な機能（自動化 / v1.2.0）
 
@@ -95,7 +93,6 @@ gitpush --yes --public --repo my-repo --message "Initial commit"
 ```toml
 default_visibility = "private"   # リポジトリの初期公開設定 (public/private)
 default_branch = "main"          # デフォルトブランチ名
-token_env = "GITHUB_TOKEN"       # 読み込む環境変数名
 auto_hook = true                 # pre-commit フックを自動登録
 auto_ci = true                   # GitHub Actions の secret-scan を自動生成
 self_update = true               # 起動時に自分自身を自動更新

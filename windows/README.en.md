@@ -71,10 +71,8 @@ Menus: pick by number, `q` cancels/exits. `q` does not respond in y/N prompts or
 2. Generate new token (classic)
 3. Note, Expiration = No expiration, check `repo` scope
 4. Generate token, copy `ghp_...`
-5. Save to `~/githubtoken.env` as `set GITHUB_TOKEN=ghp_...` (or set as system env var)
-6. `githubtoken.env` is gitignored, so it will not be pushed
 
-For `gh` auto-creation, also run `gh auth login`.
+The tool **prompts for the token on every run** (environment variables and saved values are not used). The entered token is saved to the project's `gitpush.toml` for reuse. `gh` auto-creation also uses this entered token, so `gh auth login` is not required.
 
 ## Advanced features (automation)
 
@@ -85,7 +83,6 @@ Place `gitpush.toml` in your project to change defaults:
 ```toml
 default_visibility = "private"
 default_branch = "main"
-token_env = "GITHUB_TOKEN"
 auto_hook = true
 auto_ci = true
 self_update = true
