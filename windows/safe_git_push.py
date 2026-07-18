@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 # スクリプトバージョン（self-update で使用）
-SCRIPT_VERSION = "1.1.0"
+SCRIPT_VERSION = "1.2.0"
 # 自分自身を更新する際の raw URL（linux / windows で上書きされる）
 SELF_UPDATE_RAW_URL = "https://raw.githubusercontent.com/ASDF3001/safe-git-push/main/windows/safe_git_push.py"
 
@@ -111,6 +111,20 @@ TEXTS = {
         "update_no": "更新はありません",
         "update_failed": "更新の確認に失敗しました（スキップ）",
         "updating": "自己更新中...",
+        "secret_in_code": "警告: ソースコード内に秘密のような文字列が見つかりました",
+        "secret_in_code_detail": "以上のファイルに 'password'/'api_key'/'secret' 等のリテラルが含まれています",
+        "secret_file_found": "警告: 機密ファイルらしきものが見つかりました",
+        "secret_file_detail": "以下の機密ファイルを push しようとしています",
+        "gitignore_gap": "既存の .gitignore に機密パターンが足りません。追記しますか？ [y/N]:",
+        "gitignore_patched": ".gitignore を更新しました",
+        "history_scan": "過去のコミット履歴をスキャン中...",
+        "history_secret_found": "警告: 過去のコミットに秘密らしき文字列が見つかりました",
+        "dry_run_title": "プッシュ予定の内容 (dry-run)",
+        "commit_message_prompt": "コミットメッセージを入力してください [Initial commit]",
+        "multi_remote_push": "追加のリモートにもプッシュしています...",
+        "log_written": "ログを gitpush.log に書きました",
+        "provider_gitlab": "GitLab リポジトリを作成しています...",
+        "uninstall_done": "アンインストールが完了しました",
     },
     "en": {
         "title": "Welcome to Safe Git Push!",
@@ -162,6 +176,20 @@ TEXTS = {
         "update_no": "No update available",
         "update_failed": "Failed to check for updates (skipped)",
         "updating": "Self-updating...",
+        "secret_in_code": "Warning: secret-like strings found in source code",
+        "secret_in_code_detail": "The above files contain literals like 'password'/'api_key'/'secret'",
+        "secret_file_found": "Warning: secret-like files found",
+        "secret_file_detail": "You are about to push these secret-like files",
+        "gitignore_gap": "Existing .gitignore is missing secret patterns. Append them? [y/N]:",
+        "gitignore_patched": ".gitignore updated",
+        "history_scan": "Scanning past commit history...",
+        "history_secret_found": "Warning: secret-like strings found in past commits",
+        "dry_run_title": "Contents to be pushed (dry-run)",
+        "commit_message_prompt": "Enter commit message [Initial commit]",
+        "multi_remote_push": "Pushing to extra remotes...",
+        "log_written": "Log written to gitpush.log",
+        "provider_gitlab": "Creating GitLab repository...",
+        "uninstall_done": "Uninstall completed",
     }
 }
 
@@ -278,35 +306,182 @@ def load_config(project_dir: Path, t: Dict[str, str]) -> Dict[str, object]:
         "auto_ci": True,                   # secret-scan.yml を自動生成
         "self_update": True,               # 起動時に自己更新チェック
         "expected_remote": "",             # 警告用: 期待されるリモートURLの一部
+        # --- 新機能 (v1.2.0) ---
+        "scan_secrets": True,              # ソース内の秘密リテラルをスキャン
+        "warn_secret_files": True,         # .pem/.key 等の機密ファイルを警告
+        "scan_history": False,             # 過去のコミット履歴もスキャン (重い)
+        "check_gitignore_gap": True,       # .gitignore の不足パターンを警告
+        "dry_run": True,                   # push 前に差分プレビュー
+        "default_message": "Initial commit",  # コミットメッセージ
+        "branch_pattern": "",              # ブランチ自動命名 (例: feature/%Y%m%d) 空ならオフ
+        "extra_remotes": [],               # 一斉 push する追加リモート名のリスト
+        "update_channel": "stable",        # stable | beta
+        "provider": "github",              # github | gitlab
+        "log_file": "gitpush.log",         # ログ出力先 (空なら出力しない)
     }
     if not cfg_path.exists():
         print_info(t["config_not_found"])
+        # プロジェクトに無くてもグローバル設定は適用
+        global_cfg = _load_toml_file(Path.home() / ".config" / "gitpush.toml", t)
+        if global_cfg:
+            merged = dict(defaults)
+            merged.update(global_cfg)
+            print_success(t["config_global_loaded"])
+            return merged
         return defaults
     try:
-        try:
-            import tomllib
-            with open(cfg_path, "rb") as f:
-                data = tomllib.load(f)
-        except ModuleNotFoundError:
-            try:
-                import toml  # type: ignore
-                data = toml.load(cfg_path)
-            except ModuleNotFoundError:
-                # 簡易パース（階層なしの key = "value" のみ対応）
-                data = {}
-                for line in cfg_path.read_text(encoding="utf-8").splitlines():
-                    line = line.strip()
-                    if not line or line.startswith("#") or "=" not in line:
-                        continue
-                    k, v = line.split("=", 1)
-                    data[k.strip()] = v.strip().strip('"').strip("'")
+        data = _load_toml_file(cfg_path, t) or {}
+        # グローバル設定 (~/.config/gitpush.toml) をマージ（プロジェクト優先）
+        global_cfg = _load_toml_file(Path.home() / ".config" / "gitpush.toml", t)
         merged = dict(defaults)
+        if global_cfg:
+            merged.update(global_cfg)
         merged.update(data)
         print_success(t["config_loaded"])
         return merged
     except Exception as e:
         print_warning(f"{t['config_error']}: {e}")
         return defaults
+
+
+def _load_toml_file(path: Path, t: Dict[str, str]) -> Dict[str, object]:
+    """TOML ファイルを読み込む。無ければ空 dict を返す。"""
+    if not path.exists():
+        return {}
+    try:
+        try:
+            import tomllib
+            with open(path, "rb") as f:
+                return tomllib.load(f)
+        except ModuleNotFoundError:
+            try:
+                import toml  # type: ignore
+                return toml.load(path)
+            except ModuleNotFoundError:
+                # 簡易パース（階層なしの key = "value" のみ対応）
+                data: Dict[str, object] = {}
+                for line in path.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    data[k.strip()] = v.strip().strip('"').strip("'")
+                return data
+    except Exception:
+        return {}
+
+
+# ============================================================================
+# Secret scanning (v1.2.0)
+# ============================================================================
+SECRET_LITERAL_RE = None  # lazy compile
+SECRET_FILE_EXTS = {".pem", ".key", ".p12", ".pfx", ".keystore", ".jks", ".der", ".crt", ".cer", ".p7b", ".p7c"}
+SECRET_FILE_NAMES = {"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "known_hosts", "credentials", ".netrc"}
+
+
+def scan_secret_literals(project_dir: Path, t: Dict[str, str]) -> bool:
+    """ソース内の秘密リテラルをスキャン。見つかったら警告し、y/N を返す（True=続行）。"""
+    import re
+    global SECRET_LITERAL_RE
+    if SECRET_LITERAL_RE is None:
+        SECRET_LITERAL_RE = re.compile(
+            r"""(?i)\b(password|passwd|pwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|private[_-]?key)\s*[:=]\s*['"][^'"]{4,}['"]"""
+        )
+    hits = []
+    for p in project_dir.rglob("*"):
+        if not p.is_file():
+            continue
+        if any(part.startswith(".") for part in p.relative_to(project_dir).parts):
+            # .git 等はスキップ
+            if ".git" in p.relative_to(project_dir).parts:
+                continue
+        if p.suffix in {".py", ".js", ".ts", ".sh", ".json", ".yaml", ".yml", ".env", ".toml", ".txt", ".md", ".rb", ".go", ".java", ".php", ".c", ".cpp", ".cs"}:
+            try:
+                text = p.read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                continue
+            for i, line in enumerate(text.splitlines(), 1):
+                if SECRET_LITERAL_RE.search(line):
+                    hits.append(f"  {p.relative_to(project_dir)}:{i}")
+                    break
+    if not hits:
+        return True
+    print_warning(t["secret_in_code"])
+    for h in hits[:10]:
+        print_warning(h)
+    if len(hits) > 10:
+        print_warning(f"  ... and {len(hits) - 10} more")
+    print_warning(t["secret_in_code_detail"])
+    return prompt_yes_no(t["push_confirm"], default_no=True)
+
+
+def scan_secret_files(project_dir: Path, t: Dict[str, str]) -> bool:
+    """機密ファイル（.pem, .key 等）をスキャン。見つかったら警告し y/N を返す。"""
+    hits = []
+    for p in project_dir.rglob("*"):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(project_dir)
+        if ".git" in rel.parts:
+            continue
+        if p.suffix.lower() in SECRET_FILE_EXTS or p.name.lower() in SECRET_FILE_NAMES:
+            hits.append(f"  {rel}")
+    if not hits:
+        return True
+    print_warning(t["secret_file_found"])
+    for h in hits:
+        print_warning(h)
+    print_warning(t["secret_file_detail"])
+    return prompt_yes_no(t["push_confirm"], default_no=True)
+
+
+def check_gitignore_gap(project_dir: Path, t: Dict[str, str]) -> None:
+    """既存 .gitignore に機密パターンが足りなければ追記を提案。"""
+    gitignore_path = project_dir / ".gitignore"
+    if not gitignore_path.exists():
+        return
+    content = gitignore_path.read_text(encoding="utf-8")
+    required = [".env", ".pem", ".key", "*.p12", "id_rsa", ".gitpush.toml", "gitpush.log"]
+    missing = [pat for pat in required if pat not in content]
+    if not missing:
+        return
+    print_warning(t["gitignore_gap"])
+    if not prompt_yes_no("Continue / 続行", default_no=True):
+        return
+    with open(gitignore_path, "a", encoding="utf-8") as f:
+        f.write("\n# Added by Safe Git Push\n")
+        for pat in missing:
+            f.write(pat + "\n")
+    print_success(t["gitignore_patched"])
+
+
+def scan_history(project_dir: Path, t: Dict[str, str]) -> bool:
+    """過去のコミット履歴をスキャン（重い）。秘密があれば警告。"""
+    print_step(t["history_scan"])
+    import re
+    pat = re.compile(r"(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|password\s*[:=]\s*['\"][^'\"]{4,}['\"])", re.I)
+    code, out, _ = run_command(
+        ["git", "log", "-p", "--all", "-U0"], cwd=project_dir, capture=True
+    )
+    if code != 0 or not out:
+        return True
+    if pat.search(out):
+        print_warning(t["history_secret_found"])
+        return prompt_yes_no(t["history_secret_found"], default_no=True)
+    return True
+
+
+def write_log(project_dir: Path, cfg: Dict[str, object], lines: list) -> None:
+    log_file = cfg.get("log_file", "")
+    if not log_file:
+        return
+    try:
+        with open(project_dir / log_file, "a", encoding="utf-8") as f:
+            for line in lines:
+                f.write(line + "\n")
+        print_info(t["log_written"])
+    except Exception:
+        pass
 
 
 # ============================================================================
@@ -421,8 +596,11 @@ def check_unexpected_remote(project_dir: Path, expected: str, t: Dict[str, str])
 # ============================================================================
 # Self-update
 # ============================================================================
-def self_update(t: Dict[str, str], raw_url: str) -> None:
+def self_update(t: Dict[str, str], raw_url: str, channel: str = "stable") -> None:
     import urllib.request
+    # チャンネルに応じてブランチを切り替え (main / beta)
+    if channel == "beta":
+        raw_url = raw_url.replace("/main/", "/beta/")
     try:
         with urllib.request.urlopen(raw_url, timeout=10) as resp:
             content = resp.read().decode("utf-8", errors="replace")
@@ -577,18 +755,39 @@ def init_git_repo(project_dir: Path, t: Dict[str, str]) -> bool:
     return True
 
 
-def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict[str, str]) -> Optional[str]:
-    """gh でリポジトリを自動作成。成功時は remote URL を、失敗時は None を返す。"""
-    # gh が使えるか確認
+def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict[str, str], provider: str = "github") -> Optional[str]:
+    """リポジトリを自動作成（github: gh / gitlab: glab）。成功時は remote URL、失敗時は None。"""
+    visibility = "private" if private else "public"
+
+    if provider == "gitlab":
+        code, _, _ = run_command(["glab", "version"], capture=True)
+        if code != 0:
+            print_warning(t["gh_missing"])
+            return None
+        print_step(t["provider_gitlab"])
+        code, _, err = run_command(
+            ["glab", "repo", "create", repo_name, f"--{visibility}", "--remote=origin"],
+            cwd=project_dir,
+        )
+        if code != 0:
+            print_warning(t["repo_create_failed"])
+            return None
+        code, out, _ = run_command(["git", "remote", "get-url", "origin"], cwd=project_dir, capture=True)
+        if code == 0 and out.strip():
+            print_success(t["repo_created"])
+            return out.strip()
+        return None
+
+    # github (default)
     code, _, _ = run_command(["gh", "--version"], capture=True)
     if code != 0:
         print_warning(t["gh_missing"])
         return None
 
     print_step(t["repo_creating"])
-    visibility = "--private" if private else "--public"
+    vis_flag = "--private" if private else "--public"
     code, _, err = run_command(
-        ["gh", "repo", "create", repo_name, visibility, "--source=.", "--remote=origin", "--push=false"],
+        ["gh", "repo", "create", repo_name, vis_flag, "--source=.", "--remote=origin", "--push=false"],
         cwd=project_dir,
     )
     if code != 0:
@@ -641,7 +840,7 @@ def setup_git_branch(project_dir: Path, branch_name: str, t: Dict[str, str]) -> 
     return True
 
 
-def git_add_commit(project_dir: Path, t: Dict[str, str]) -> bool:
+def git_add_commit(project_dir: Path, t: Dict[str, str], message: str = "Initial commit") -> bool:
     print_step(t["git_add"])
     code, _, err = run_command(["git", "add", "."], cwd=project_dir)
     if code != 0:
@@ -649,7 +848,7 @@ def git_add_commit(project_dir: Path, t: Dict[str, str]) -> bool:
         return False
 
     print_step(t["git_commit"])
-    code, _, err = run_command(["git", "commit", "-m", "Initial commit"], cwd=project_dir)
+    code, _, err = run_command(["git", "commit", "-m", message], cwd=project_dir)
     if code != 0:
         if "nothing to commit" in err.lower():
             print_warning("Nothing to commit")
@@ -661,7 +860,7 @@ def git_add_commit(project_dir: Path, t: Dict[str, str]) -> bool:
     return True
 
 
-def git_push(project_dir: Path, branch_name: str, t: Dict[str, str]) -> bool:
+def git_push(project_dir: Path, branch_name: str, t: Dict[str, str], extra_remotes: Optional[list] = None) -> bool:
     print_step(t["pushing"])
     code, _, err = run_command(["git", "push", "-u", "origin", branch_name], cwd=project_dir)
     if code != 0:
@@ -670,6 +869,15 @@ def git_push(project_dir: Path, branch_name: str, t: Dict[str, str]) -> bool:
         return False
 
     print_success(t["push_success"])
+
+    # 追加リモートにも一斉 push
+    for remote in (extra_remotes or []):
+        print_step(t["multi_remote_push"] + f" {remote}")
+        code, _, err = run_command(["git", "push", "-u", remote, branch_name], cwd=project_dir)
+        if code != 0:
+            print_warning(f"Push to {remote} failed: {err.strip().splitlines()[0] if err.strip() else ''}")
+        else:
+            print_success(f"Pushed to {remote}")
     return True
 
 
@@ -695,8 +903,29 @@ def select_language() -> str:
 
 
 def main():
-    # Language selection
-    lang = select_language()
+    # Non-interactive mode argv parsing
+    import argparse
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--yes", action="store_true")
+    parser.add_argument("--public", action="store_true")
+    parser.add_argument("--private", action="store_true")
+    parser.add_argument("--repo", type=str, default=None)
+    parser.add_argument("--message", type=str, default=None)
+    parser.add_argument("--lang", type=str, default=None)
+    try:
+        args, _ = parser.parse_known_args()
+    except Exception:
+        args = argparse.Namespace(yes=False, public=False, private=False,
+                                   repo=None, message=None, lang=None)
+    non_interactive = args.yes
+
+    # Language selection (or from --lang)
+    if args.lang in ("ja", "en"):
+        lang = args.lang
+    elif non_interactive:
+        lang = "en"
+    else:
+        lang = select_language()
     t = TEXTS[lang]
 
     # Clear screen for clean start
@@ -711,7 +940,7 @@ def main():
     # 0. Self-update check (before anything else)
     cfg_pre = load_config(project_dir, t)
     if cfg_pre.get("self_update", True):
-        self_update(t, SELF_UPDATE_RAW_URL)
+        self_update(t, SELF_UPDATE_RAW_URL, cfg_pre.get("update_channel", "stable"))
 
     # Reload config after potential update
     cfg = load_config(project_dir, t)
@@ -720,6 +949,17 @@ def main():
     auto_hook = cfg.get("auto_hook", True)
     auto_ci = cfg.get("auto_ci", True)
     expected_remote = cfg.get("expected_remote", "")
+    default_message = cfg.get("default_message", "Initial commit")
+    branch_pattern = cfg.get("branch_pattern", "")
+    extra_remotes = cfg.get("extra_remotes", []) or []
+    provider = cfg.get("provider", "github")
+    update_channel = cfg.get("update_channel", "stable")
+    scan_secrets = cfg.get("scan_secrets", True)
+    warn_secret_files = cfg.get("warn_secret_files", True)
+    scan_history_enabled = cfg.get("scan_history", False)
+    check_gitignore_gap_enabled = cfg.get("check_gitignore_gap", True)
+    dry_run_enabled = cfg.get("dry_run", True)
+    log_lines = []
 
     # 1. Ensure .gitignore
     ensure_gitignore(project_dir, t)
@@ -727,44 +967,81 @@ def main():
     # 2. Scan .env and create .env.example
     scan_env_and_create_example(project_dir, t)
 
+    # 2b. Secret literal scan (source code)
+    if scan_secrets:
+        if not scan_secret_literals(project_dir, t):
+            print_warning(t["secret_in_code_detail"])
+            if not (non_interactive or prompt_yes_no(t["push_confirm"], default_no=True)):
+                sys.exit(1)
+
+    # 2c. Secret-file warning
+    if warn_secret_files:
+        if scan_secret_files(project_dir, t):
+            if not (non_interactive or prompt_yes_no(t["push_confirm"], default_no=True)):
+                sys.exit(1)
+
+    # 2d. .gitignore gap check
+    if check_gitignore_gap_enabled:
+        check_gitignore_gap(project_dir, t)
+
     print_divider(thin=True)
 
-    # 3. Repository creation (public/private selectable) or manual URL
-    # 3a. Ask repo name
-    while True:
-        repo_name = prompt_input(t["repo_name_prompt"])
-        if repo_name:
-            break
-        print_error(t["repo_name_empty"])
+    # 3. Repository creation
+    if non_interactive and args.repo:
+        repo_name = args.repo
+    else:
+        while True:
+            repo_name = prompt_input(t["repo_name_prompt"])
+            if repo_name:
+                break
+            print_error(t["repo_name_empty"])
 
-    # 3b. Ask visibility (default from config)
-    default_vis_choice = "2" if default_visibility == "private" else "1"
-    print(f"{Neon.PROMPT}{t['repo_visibility_prompt']}{Neon.RESET}")
-    for opt in t["repo_visibility_options"]:
-        print(f"  {Neon.INFO}{opt}{Neon.RESET}")
-    while True:
-        vis_choice = prompt_input("Choice / 選択 [1-2]", default_vis_choice)
-        if vis_choice in ("1", "public"):
-            private = False
-            break
-        elif vis_choice in ("2", "private"):
-            private = True
-            break
-        print_warning("Please enter 1 or 2 / 1 または 2 を入力してください")
+    # visibility
+    if args.public:
+        private = False
+    elif args.private:
+        private = True
+    else:
+        default_vis_choice = "2" if default_visibility == "private" else "1"
+        print(f"{Neon.PROMPT}{t['repo_visibility_prompt']}{Neon.RESET}")
+        for opt in t["repo_visibility_options"]:
+            print(f"  {Neon.INFO}{opt}{Neon.RESET}")
+        while True:
+            vis_choice = prompt_input("Choice / 選択 [1-2]", default_vis_choice)
+            if vis_choice in ("1", "public"):
+                private = False
+                break
+            elif vis_choice in ("2", "private"):
+                private = True
+                break
+            print_warning("Please enter 1 or 2 / 1 または 2 を入力してください")
 
-    # 3c. Try auto-create via gh
-    repo_url = create_github_repo(project_dir, repo_name, private, t)
+    # 3c. Try auto-create
+    repo_url = create_github_repo(project_dir, repo_name, private, t, provider=provider)
 
     # 3d. Fallback: manual URL input
     if not repo_url:
-        while True:
+        if non_interactive:
+            repo_url = args.repo if args.repo and args.repo.startswith("http") else None
+        while not repo_url:
             repo_url = prompt_input(t["repo_url_prompt"])
             if repo_url:
                 break
             print_error(t["repo_url_empty"])
 
-    # 4. Get branch name (default from config)
-    branch_name = prompt_input(t["branch_prompt"], default_branch)
+    # 4. Branch name (pattern from config or input)
+    if branch_pattern:
+        import datetime
+        branch_name = branch_pattern.format(
+            date=datetime.date.today().isoformat(),
+            repo=repo_name,
+            ts=datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
+        )
+        print_info(f"{t['branch_prompt']} {branch_name}")
+    elif non_interactive:
+        branch_name = default_branch
+    else:
+        branch_name = prompt_input(t["branch_prompt"], default_branch)
 
     print_divider(thin=True)
 
@@ -772,11 +1049,9 @@ def main():
     if not init_git_repo(project_dir, t):
         sys.exit(1)
 
-    # 5b. Auto-register pre-commit hook
     if auto_hook:
         install_pre_commit_hook(project_dir, t)
 
-    # 5c. Auto-generate CI workflow
     if auto_ci:
         create_ci_workflow(project_dir, t)
 
@@ -786,28 +1061,48 @@ def main():
     if not setup_git_branch(project_dir, branch_name, t):
         sys.exit(1)
 
-    if not git_add_commit(project_dir, t):
+    # commit message
+    commit_message = args.message or default_message
+    if not non_interactive and not args.message:
+        commit_message = prompt_input(t["commit_message_prompt"], default_message)
+
+    if not git_add_commit(project_dir, t, commit_message):
         sys.exit(1)
 
-    # 6. Confirm push
+    # 6. Dry-run preview
+    if dry_run_enabled:
+        print_step(t["dry_run_title"])
+        run_command(["git", "diff", "--stat", "HEAD"], cwd=project_dir)
+
+    # 6b. History scan (if enabled)
+    if scan_history_enabled:
+        if not scan_history(project_dir, t):
+            sys.exit(1)
+
+    # 7. Confirm push
     print_divider()
-    if not prompt_yes_no(t["push_confirm"], default_no=True):
+    if not non_interactive and not prompt_yes_no(t["push_confirm"], default_no=True):
         print_warning(t["push_cancelled"])
         print_divider()
         print(f"{Neon.SUCCESS}{t['done']}{Neon.RESET}")
         press_enter_to_exit(t)
         return
 
-    # 6b. Multi-remote warning
+    # 7b. Multi-remote warning
     check_unexpected_remote(project_dir, expected_remote, t)
 
-    # 7. Push
-    if not git_push(project_dir, branch_name, t):
+    # 8. Push (with multi-remote)
+    if not git_push(project_dir, branch_name, t, extra_remotes):
         sys.exit(1)
 
     print_divider()
     print(f"{Neon.SUCCESS}{t['done']}{Neon.RESET}")
     print_divider()
+
+    # 9. Logging
+    log_lines.append(f"[{datetime.datetime.now().isoformat()}] pushed {repo_name} -> {branch_name} (provider={provider}, channel={update_channel})")
+    write_log(project_dir, cfg, log_lines)
+
     press_enter_to_exit(t)
 
 

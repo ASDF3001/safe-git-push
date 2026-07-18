@@ -1,6 +1,7 @@
 # Safe Git Push 設定例 / Example config
 # このファイルを gitpush.toml としてプロジェクトのルートに置いてください
 # Copy this file as gitpush.toml in your project root
+# (グローバル設定は ~/.config/gitpush.toml にも置けます / Global config also supported)
 
 # リポジトリの初期公開設定: "public" または "private"
 default_visibility = "public"
@@ -22,3 +23,39 @@ self_update = true
 
 # この文字列がリモートURLに含まれていなければ警告する（空なら無効）
 expected_remote = ""
+
+# ---- v1.2.0 新機能 / new features ----
+
+# ソースコード内の秘密リテラル（ghp_... 等）をスキャンするか
+scan_secrets = true
+
+# .pem / .key 等の機密ファイルがあれば警告するか
+warn_secret_files = true
+
+# 過去のコミット履歴もスキャンするか（重い / デフォルト off）
+scan_history = false
+
+# .gitignore の不足パターン（.env, *.key 等）を警告するか
+check_gitignore_gap = true
+
+# push 前に git diff --stat をプレビューするか
+dry_run = true
+
+# デフォルトのコミットメッセージ
+default_message = "Initial commit"
+
+# ブランチ自動命名パターン（空ならオフ / 例: "feature/%Y%m%d"）
+# 利用可能なプレースホルダ: {date} {repo} {ts}
+branch_pattern = ""
+
+# 一斉 push する追加リモート名のリスト
+extra_remotes = []
+
+# 更新チャンネル: "stable" または "beta"
+update_channel = "stable"
+
+# プロバイダ: "github" または "gitlab"
+provider = "github"
+
+# ログ出力先ファイル（空なら出力しない）
+log_file = "gitpush.log"
