@@ -363,6 +363,15 @@ def run_command(cmd: List[str], cwd: Optional[Path] = None, capture: bool = Fals
         return -1, "", str(e)
 
 
+def check_git_available() -> bool:
+    """起動直後に git が使えるか確認する。無ければエラーを出して終了。"""
+    code, _, _ = run_command(["git", "--version"], capture=True)
+    if code != 0:
+        print_error("[X] Error: 'git' command not found. Please ensure Git is installed and added to your PATH.")
+        return False
+    return True
+
+
 # ============================================================================
 # Config (gitpush.toml)
 # ============================================================================
@@ -1129,8 +1138,8 @@ def git_add_commit(project_dir: Path, t: Dict[str, str], message: str = "Initial
     print_step(t["git_commit"])
     code, _, err = run_command(["git", "commit", "-m", message], cwd=project_dir)
     if code != 0:
-        if "nothing to commit" in err.lower():
-            print_warning("Nothing to commit")
+        if "nothing to commit" in err.lower() or "nothing added to commit" in err.lower():
+            print_warning("[-] No changes to commit. Working tree is clean. Proceeding to next step...")
             return True
         print_error(f"Failed to commit: {err}")
         return False
@@ -1142,29 +1151,44 @@ def git_add_commit(project_dir: Path, t: Dict[str, str], message: str = "Initial
 def git_push(project_dir: Path, branch_name: str, t: Dict[str, str], extra_remotes: Optional[list] = None, token: str = "") -> bool:
     print_step(t["pushing"])
 
+    # 3d. リモート(origin)が設定されているか確認（push 前の必須チェック）
+    code, out, _ = run_command(["git", "remote", "get-url", "origin"], cwd=project_dir, capture=True)
+    if code != 0 or not out.strip():
+        print_error("[X] Error: No remote repository configured. Run 'git remote add origin <URL>' first.")
+        return False
+
     # token があれば remote URL に一時埋め込み（push 後にクリーン化）
     token_injected = False
-    original_url = ""
+    original_url = out.strip()
     if token:
-        code, out, _ = run_command(["git", "remote", "get-url", "origin"], cwd=project_dir, capture=True)
-        if code == 0 and out.strip():
-            original_url = out.strip()
-            import re as _re
-            m = _re.match(r"^(https://)([^/]+)(/.*)$", original_url)
-            if m:
-                injected = f"{m.group(1)}{token}@{m.group(2)}{m.group(3)}"
-                run_command(["git", "remote", "set-url", "origin", injected], cwd=project_dir)
-                token_injected = True
+        import re as _re
+        m = _re.match(r"^(https://)([^/]+)(/.*)$", original_url)
+        if m:
+            injected = f"{m.group(1)}{token}@{m.group(2)}{m.group(3)}"
+            run_command(["git", "remote", "set-url", "origin", injected], cwd=project_dir)
+            token_injected = True
 
     code, _, err = run_command(["git", "push", "-u", "origin", branch_name], cwd=project_dir)
 
     # 必ずクリーン化
-    if token_injected and original_url:
+    if token_injected:
         run_command(["git", "remote", "set-url", "origin", original_url], cwd=project_dir)
 
     if code != 0:
-        print_error(t["push_failed"])
-        print_error(err)
+        err_lower = err.lower()
+        # 6. リモートとの競合 (non-fast-forward)
+        if "non-fast-forward" in err_lower or "fetch first" in err_lower \
+                or "rejected" in err_lower and "updates were rejected" in err_lower:
+            print_error("[X] Push Rejected: Remote contains work that you do not have locally. Run 'git pull' first.")
+        # 5. ネットワークエラー・認証失敗
+        elif any(k in err_lower for k in ("could not resolve host", "timed out", "network is unreachable",
+                                          "connection refused", "failed to connect", "permission denied",
+                                          "authentication failed", "remote: invalid username",
+                                          "fatal: unable to access", "ssl", "403", "401")):
+            print_error("[X] Connection Error: Failed to push to remote. Please check your internet connection or GitHub credentials.")
+        else:
+            print_error(t["push_failed"])
+            print_error(err.strip().splitlines()[0] if err.strip() else "")
         return False
 
     print_success(t["push_success"])
@@ -1224,6 +1248,10 @@ def main():
     os.system("clear" if os.name == "posix" else "cls")
 
     print_title(t, lang)
+
+    # 3. git コマンドの利用可否を起動直後にチェック
+    if not check_git_available():
+        sys.exit(1)
 
     project_dir = Path.cwd()
     print(f"{Neon.INFO}Working directory: {project_dir}{Neon.RESET}")
@@ -1416,7 +1444,7 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print(f"\n{Neon.WARNING}Interrupted by user{Neon.RESET}")
+        print(f"\n{Neon.WARNING}[!] Operation cancelled by user. Exiting safely...{Neon.RESET}")
         sys.exit(130)
     except Exception as e:
         print(f"\n{Neon.ERROR}Unexpected error: {e}{Neon.RESET}")
