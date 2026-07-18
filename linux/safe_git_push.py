@@ -596,6 +596,22 @@ def check_unexpected_remote(project_dir: Path, expected: str, t: Dict[str, str])
 # ============================================================================
 # Self-update
 # ============================================================================
+def parse_version(v: str):
+    """バージョン文字列を比較用タプルにする。
+    '1.2.0' -> (1,2,0,1)  /  '1.2.1-beta' -> (1,2,1,0,'beta')
+    pre-release サフィックス無しを上位(1)とし、ありを下位(0)とする。"""
+    import re
+    m = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z0-9.]+))?$", v.strip())
+    if not m:
+        # 解析不可な場合は辞書順比較のためそのまま返す
+        return (0, 0, 0, 1, v)
+    major, minor, patch = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    pre = m.group(4)
+    if pre is None:
+        return (major, minor, patch, 1)
+    return (major, minor, patch, 0, pre)
+
+
 def self_update(t: Dict[str, str], raw_url: str, channel: str = "stable") -> None:
     import urllib.request
     # チャンネルに応じてブランチを切り替え (main / beta)
@@ -613,7 +629,7 @@ def self_update(t: Dict[str, str], raw_url: str, channel: str = "stable") -> Non
     if not m:
         return
     remote_version = m.group(1)
-    if remote_version <= SCRIPT_VERSION:
+    if parse_version(remote_version) <= parse_version(SCRIPT_VERSION):
         print_info(t["update_no"])
         return
     print_info(f"local={SCRIPT_VERSION} remote={remote_version}")
