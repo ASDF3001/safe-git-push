@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 # スクリプトバージョン（self-update で使用）
-SCRIPT_VERSION = "1.2.2"
+SCRIPT_VERSION = "1.2.3"
 # 自分自身を更新する際の raw URL（linux / windows で上書きされる）
 SELF_UPDATE_RAW_URL = "https://raw.githubusercontent.com/ASDF3001/safe-git-push/main/linux/safe_git_push.py"
 
@@ -1025,16 +1025,15 @@ def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict
         ["gh", "repo", "view", repo_name, "--json", "url"], cwd=project_dir, capture=True, env=gh_env
     )
     if view_code == 0 and "url" in view_out:
+        # 既存リポジトリが見つかった → 必ずそれを使う（push するため）。
+        # 「使わない」を選ぶと push 先が無くなるため、常に attach する。
+        import re as _re
+        m = _re.search(r'"url"\s*:\s*"([^"]+)"', view_out)
+        existing_url = m.group(1) if m else f"https://github.com/{repo_name}"
         print_warning(t["repo_exists"])
-        if prompt_yes_no(t["push_confirm"], default_no=True):
-            # 既存リポの URL を origin に設定
-            import re as _re
-            m = _re.search(r'"url"\s*:\s*"([^"]+)"', view_out)
-            existing_url = m.group(1) if m else f"https://github.com/{repo_name}"
-            run_command(["git", "remote", "add", "origin", existing_url], cwd=project_dir)
-            print_success(t["repo_exists_url"] + existing_url)
-            return _maybe_ssh(existing_url, project_dir, t)
-        # 使わない場合は新規作成へ
+        run_command(["git", "remote", "add", "origin", existing_url], cwd=project_dir)
+        print_success(t["repo_exists_url"] + existing_url)
+        return _maybe_ssh(existing_url, project_dir, t)
 
     print_step(t["repo_creating"])
     vis_flag = "--private" if private else "--public"
@@ -1043,9 +1042,18 @@ def create_github_repo(project_dir: Path, repo_name: str, private: bool, t: Dict
         cwd=project_dir, env=gh_env,
     )
     if code != 0:
+        # 同名リポジトリが既に存在する場合 (GraphQL: Name already exists) は
+        # それを使って続行する。
+        err_first = err.strip().splitlines()[0] if err.strip() else ""
+        if "already exists" in err_first or "name already exists" in err_first.lower():
+            print_warning(t["repo_exists"])
+            existing_url = f"https://github.com/{repo_name}"
+            run_command(["git", "remote", "add", "origin", existing_url], cwd=project_dir)
+            print_success(t["repo_exists_url"] + existing_url)
+            return _maybe_ssh(existing_url, project_dir, t)
         print_warning(t["repo_create_failed"])
-        if err.strip():
-            print_warning(err.strip().splitlines()[0] if err.strip() else "")
+        if err_first:
+            print_warning(err_first)
         print_info(t["auth_note"])
         return None
 
