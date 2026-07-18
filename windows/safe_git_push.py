@@ -14,6 +14,18 @@ import shlex
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+# Windows のコンソール出力を UTF-8 にする（cp932 での日本語エンコード失敗を防ぐ）
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 
 def ensure_colorama():
     """colorama が無ければ自動で pip install する（パブリックリポジトリでも即動作）"""

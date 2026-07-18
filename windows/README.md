@@ -4,7 +4,21 @@
 
 ## インストール
 
-PowerShell でワンライナー（推奨）:
+### A. 実行ファイル (exe) を使う
+
+`windows/gitpush.exe` をダウンロードして、任意のフォルダに置くだけで使えます。
+Python のインストールは不要です。
+
+```powershell
+# 例: ダウンロードして実行
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/ASDF3001/safe-git-push/main/windows/gitpush.exe -OutFile gitpush.exe
+.\gitpush.exe
+```
+
+注意: この exe は Linux 環境 (wine + PyInstaller) でビルドしています。
+Windows での動作確認は行っていないため、不具合があれば Issue で報告してください。
+
+### B. PowerShell でワンライナー（Python 版）
 
 ```powershell
 irm https://raw.githubusercontent.com/ASDF3001/safe-git-push/main/windows/install.ps1 | iex
@@ -16,7 +30,7 @@ irm https://raw.githubusercontent.com/ASDF3001/safe-git-push/main/windows/instal
 . $PROFILE
 ```
 
-手動:
+### C. 手動（Python 版）
 
 ```powershell
 git clone https://github.com/ASDF3001/safe-git-push.git

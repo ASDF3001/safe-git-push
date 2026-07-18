@@ -4,7 +4,18 @@ The Windows version of the CLI tool to push to GitHub safely.
 
 ## Install
 
-In PowerShell, one-liner (recommended):
+### A. Executable (exe)
+
+Download `windows/gitpush.exe` and place it in any folder. No Python install needed.
+
+```powershell
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/ASDF3001/safe-git-push/main/windows/gitpush.exe -OutFile gitpush.exe
+.\gitpush.exe
+```
+
+Note: this exe was built on Linux (wine + PyInstaller). It has not been tested on a real Windows machine, so please report any issues via Issues.
+
+### B. PowerShell one-liner (Python version)
 
 ```powershell
 irm https://raw.githubusercontent.com/ASDF3001/safe-git-push/main/windows/install.ps1 | iex
@@ -16,7 +27,7 @@ Then open a new PowerShell window, or run:
 . $PROFILE
 ```
 
-Manual:
+### C. Manual (Python version)
 
 ```powershell
 git clone https://github.com/ASDF3001/safe-git-push.git
