@@ -30,18 +30,40 @@
 
 ## 使い方
 
-### エイリアス経由（推奨）
+### ワンライナーでインストール（推奨）
 
-`~/.zshrc`（または `~/.bashrc`）に以下が登録されています:
+以下のコマンド一発で、`safe_git_push.py` のダウンロードと `gitpush` エイリアスの登録が完了します:
 
 ```sh
-alias gitpush='python3 ~/git-push-tool/safe_git_push.py'
+curl -fsSL https://raw.githubusercontent.com/ASDF3001/safe-git-push/main/install.sh | bash
 ```
 
-ターミナルで `gitpush` と打つだけで起動します。
+実行後、以下のどれかで有効化してください:
+
+```sh
+source ~/.zshrc    # 現在のターミナルですぐ使う（zsh の場合）
+# または新しいターミナルを開く
+```
+
+これで `gitpush` と打つだけで起動します。
 
 ```sh
 gitpush
+```
+
+### 手動インストール
+
+1. このリポジトリをクローン（または `safe_git_push.py` をダウンロード）:
+
+```sh
+git clone https://github.com/ASDF3001/safe-git-push.git ~/git-push-tool
+```
+
+2. `~/.zshrc`（または `~/.bashrc`）にエイリアスを追加:
+
+```sh
+echo "alias gitpush='python3 \$HOME/git-push-tool/safe_git_push.py'" >> ~/.zshrc
+source ~/.zshrc
 ```
 
 ### 直接実行(linuxの場合)
