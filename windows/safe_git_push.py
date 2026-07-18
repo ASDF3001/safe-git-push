@@ -1168,23 +1168,27 @@ def git_push(project_dir: Path, branch_name: str, t: Dict[str, str], extra_remot
             run_command(["git", "remote", "set-url", "origin", injected], cwd=project_dir)
             token_injected = True
 
-    code, _, err = run_command(["git", "push", "-u", "origin", branch_name], cwd=project_dir)
-
-    # 必ずクリーン化
-    if token_injected:
-        run_command(["git", "remote", "set-url", "origin", original_url], cwd=project_dir)
+    try:
+        # capture=True で stderr を受け取り、エラー分類(#5/#6)を正しく行う
+        code, _, err = run_command(
+            ["git", "push", "-u", "origin", branch_name], cwd=project_dir, capture=True
+        )
+    finally:
+        # 例外(Ctrl+C含む)が起きてもトークン付きURLを必ず元に戻す
+        if token_injected:
+            run_command(["git", "remote", "set-url", "origin", original_url], cwd=project_dir)
 
     if code != 0:
         err_lower = err.lower()
         # 6. リモートとの競合 (non-fast-forward)
         if "non-fast-forward" in err_lower or "fetch first" in err_lower \
-                or "rejected" in err_lower and "updates were rejected" in err_lower:
+                or ("rejected" in err_lower and "updates were rejected" in err_lower):
             print_error("[X] Push Rejected: Remote contains work that you do not have locally. Run 'git pull' first.")
         # 5. ネットワークエラー・認証失敗
         elif any(k in err_lower for k in ("could not resolve host", "timed out", "network is unreachable",
                                           "connection refused", "failed to connect", "permission denied",
-                                          "authentication failed", "remote: invalid username",
-                                          "fatal: unable to access", "ssl", "403", "401")):
+                                          "authentication failed", "invalid username or password",
+                                          "fatal: unable to access", "ssl", "403", "401", "could not read username")):
             print_error("[X] Connection Error: Failed to push to remote. Please check your internet connection or GitHub credentials.")
         else:
             print_error(t["push_failed"])
@@ -1196,7 +1200,7 @@ def git_push(project_dir: Path, branch_name: str, t: Dict[str, str], extra_remot
     # 追加リモートにも一斉 push
     for remote in (extra_remotes or []):
         print_step(t["multi_remote_push"] + f" {remote}")
-        code, _, err = run_command(["git", "push", "-u", remote, branch_name], cwd=project_dir)
+        code, _, err = run_command(["git", "push", "-u", remote, branch_name], cwd=project_dir, capture=True)
         if code != 0:
             print_warning(f"Push to {remote} failed: {err.strip().splitlines()[0] if err.strip() else ''}")
         else:
