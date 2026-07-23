@@ -24,5 +24,5 @@ Open the folder for your OS and follow its README.
 Choose Japanese / English at startup.
 
 ## License
-
+[MIT LICENSE](./LICENSE)
 Free to use.
