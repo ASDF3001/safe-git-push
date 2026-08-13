@@ -249,7 +249,7 @@ class Neon:
     PROMPT = Fore.MAGENTA + Style.BRIGHT
     INPUT = Fore.WHITE + Style.BRIGHT
     RESET = Style.RESET_ALL
-    DIVIDER = Fore.BLUE + "═" * 60 + Style.RESET_ALL
+    DIVIDER = Fore.BLUE + "━" * 60 + Style.RESET_ALL
     DIVIDER_THIN = Fore.CYAN + "─" * 60 + Style.RESET_ALL
 
 
@@ -259,29 +259,29 @@ def print_divider(thin=False):
 
 def print_title(t: Dict[str, str], lang: str):
     print_divider()
-    print(f"{Neon.TITLE}  {t['title']}{Neon.RESET}")
-    print(f"{Neon.SUBTITLE}  {t['subtitle']}{Neon.RESET}")
+    print(f"{Neon.TITLE}✨ {t['title']}{Neon.RESET}")
+    print(f"{Neon.SUBTITLE}   {t['subtitle']}{Neon.RESET}")
     print_divider()
 
 
 def print_step(msg: str):
-    print(f"{Neon.INFO}>> {msg}{Neon.RESET}")
+    print(f"{Neon.INFO}🚀 {msg}{Neon.RESET}")
 
 
 def print_success(msg: str):
-    print(f"{Neon.SUCCESS}[OK] {msg}{Neon.RESET}")
+    print(f"{Neon.SUCCESS}✅ {msg}{Neon.RESET}")
 
 
 def print_warning(msg: str):
-    print(f"{Neon.WARNING}[!] {msg}{Neon.RESET}")
+    print(f"{Neon.WARNING}⚠️  {msg}{Neon.RESET}")
 
 
 def print_info(msg: str):
-    print(f"{Neon.INFO}[i] {msg}{Neon.RESET}")
+    print(f"{Neon.INFO}ℹ️  {msg}{Neon.RESET}")
 
 
 def print_error(msg: str):
-    print(f"{Neon.ERROR}[X] {msg}{Neon.RESET}")
+    print(f"{Neon.ERROR}❌ {msg}{Neon.RESET}")
 
 
 def prompt_input(prompt: str, default: str = "", range_hint: str = "") -> str:
@@ -801,7 +801,7 @@ def parse_version(v: str):
     return (major, minor, patch, 0, pre)
 
 
-def self_update(t: Dict[str, str], raw_url: str, channel: str = "stable") -> None:
+def self_update(t: Dict[str, str], raw_url: str, channel: str = "stable", force: bool = False) -> None:
     import urllib.request
     # チャンネルに応じてブランチを切り替え (main / beta)
     if channel == "beta":
@@ -809,8 +809,9 @@ def self_update(t: Dict[str, str], raw_url: str, channel: str = "stable") -> Non
     try:
         with urllib.request.urlopen(raw_url, timeout=10) as resp:
             content = resp.read().decode("utf-8", errors="replace")
-    except Exception:
-        print_warning(t["update_failed"])
+    except Exception as e:
+        if force:
+            print_warning(f"{t['update_failed']}: {e}")
         return
     # バージョンを探す
     import re
@@ -819,11 +820,15 @@ def self_update(t: Dict[str, str], raw_url: str, channel: str = "stable") -> Non
         return
     remote_version = m.group(1)
     if parse_version(remote_version) <= parse_version(SCRIPT_VERSION):
-        print_info(t["update_no"])
+        if force:
+            print_info(t["update_no"])
         return
     print_info(f"local={SCRIPT_VERSION} remote={remote_version}")
-    if not prompt_yes_no(t["update_available"], default_no=True):
+    
+    if not force:
+        print_warning("A new version is available! Run `gitpush update` to update.")
         return
+        
     print_step(t["updating"])
     try:
         script_path = Path(__file__).resolve()
@@ -1226,6 +1231,7 @@ def main():
     # Non-interactive mode argv parsing
     import argparse
     parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("command", nargs="?", default=None, help="Command to run (e.g., update)")
     parser.add_argument("--yes", action="store_true")
     parser.add_argument("--public", action="store_true")
     parser.add_argument("--private", action="store_true")
@@ -1235,9 +1241,10 @@ def main():
     try:
         args, _ = parser.parse_known_args()
     except Exception:
-        args = argparse.Namespace(yes=False, public=False, private=False,
+        args = argparse.Namespace(command=None, yes=False, public=False, private=False,
                                    repo=None, message=None, lang=None)
     non_interactive = args.yes
+    is_update_command = args.command == "update"
 
     # Language selection (or from --lang)
     if args.lang in ("ja", "en"):
@@ -1263,8 +1270,12 @@ def main():
 
     # 0. Self-update check (before anything else)
     cfg_pre = load_config(project_dir, t)
-    if cfg_pre.get("self_update", True):
-        self_update(t, SELF_UPDATE_RAW_URL, cfg_pre.get("update_channel", "stable"))
+    
+    if is_update_command:
+        self_update(t, SELF_UPDATE_RAW_URL, cfg_pre.get("update_channel", "stable"), force=True)
+        sys.exit(0)
+    elif cfg_pre.get("self_update", True):
+        self_update(t, SELF_UPDATE_RAW_URL, cfg_pre.get("update_channel", "stable"), force=False)
 
     # Reload config after potential update
     cfg = load_config(project_dir, t)

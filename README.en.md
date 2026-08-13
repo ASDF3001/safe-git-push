@@ -21,14 +21,10 @@ Open the folder for your OS and follow its README.
 
 ## About Updating
 
-A `gitpush update` command may be implemented in the future to easily update the tool.
-If your version of `gitpush` supports the `gitpush update` command, you can simply run it to update.
+You can easily update the tool to the latest version by running the `gitpush update` command.
+If a new version is detected upon launch, a warning will be displayed. When you see this, run the command to update.
 
-**If you do not have the `gitpush update` command:**
-Currently, `gitpush` has a self-update feature that checks for the latest version on launch (when `self_update = true` in `gitpush.toml`). 
-When an update is available, you will be prompted to update. Simply typing `y` will update the tool automatically.
-
-If you want to update manually, you can run `git pull` on this repository again or re-run the installer (`install.sh` or `install.ps1`) to overwrite the existing scripts.
+If you want to update manually or if the command fails, you can run `git pull` on this repository again or re-run the installer (`install.sh` or `install.ps1`) to overwrite the existing scripts.
 
 ## Language
 
