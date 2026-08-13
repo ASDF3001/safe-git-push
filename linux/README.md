@@ -108,7 +108,7 @@ default_branch = "main"          # デフォルトブランチ名
 auto_hook = true                 # pre-commit フックを自動登録
 auto_ci = true                   # GitHub Actions の secret-scan を自動生成
 self_update = true               # 起動時に自分自身を自動更新
-expected_remote = "ASDF3001"     # この文字列がリモートURLに無ければ警告
+expected_remote = "(ユーザー名)"     # この文字列がリモートURLに無ければ警告
 
 # v1.2.0 新機能
 scan_secrets = true             # ソース内の秘密リテラルをスキャン
