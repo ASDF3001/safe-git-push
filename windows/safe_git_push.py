@@ -1291,6 +1291,27 @@ def select_language() -> str:
     return "ja" if idx == 1 else "en"
 
 
+def print_help():
+    print(f"{Neon.TITLE}✨ Safe Git Push - Help{Neon.RESET}")
+    print_divider()
+    print(f"{Neon.INFO}Usage:{Neon.RESET}")
+    print("  gitpush [command] [options]")
+    print()
+    print(f"{Neon.INFO}Commands:{Neon.RESET}")
+    print("  (none)      Run interactively (default)")
+    print("  update      Update to the latest version")
+    print("  help        Show this help message")
+    print()
+    print(f"{Neon.INFO}Options:{Neon.RESET}")
+    print("  --yes       Skip prompts and use defaults (yes to all)")
+    print("  --public    Set repository visibility to public")
+    print("  --private   Set repository visibility to private")
+    print("  --repo      Specify repository name")
+    print("  --message   Specify commit message")
+    print("  --lang      Specify language (ja / en)")
+    print("  -h, --help  Show this help message")
+    print_divider()
+
 def main():
     # Non-interactive mode argv parsing
     import argparse
@@ -1302,11 +1323,17 @@ def main():
     parser.add_argument("--repo", type=str, default=None)
     parser.add_argument("--message", type=str, default=None)
     parser.add_argument("--lang", type=str, default=None)
+    parser.add_argument("--help", "-h", action="store_true")
     try:
         args, _ = parser.parse_known_args()
     except Exception:
         args = argparse.Namespace(command=None, yes=False, public=False, private=False,
-                                   repo=None, message=None, lang=None)
+                                   repo=None, message=None, lang=None, help=False)
+    
+    if args.help or args.command == "help":
+        print_help()
+        sys.exit(0)
+
     non_interactive = args.yes
     is_update_command = args.command == "update"
 
