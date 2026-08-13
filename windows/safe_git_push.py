@@ -1340,8 +1340,8 @@ def main():
     # Language selection (or from --lang)
     if args.lang in ("ja", "en"):
         lang = args.lang
-    elif non_interactive:
-        lang = "en"
+    elif non_interactive or is_update_command:
+        lang = "ja" if "ja" in os.environ.get("LANG", "").lower() else "en"
     else:
         lang = select_language()
     t = TEXTS[lang]
