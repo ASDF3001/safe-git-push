@@ -108,7 +108,8 @@ default_branch = "main"          # デフォルトブランチ名
 auto_hook = true                 # pre-commit フックを自動登録
 auto_ci = true                   # GitHub Actions の secret-scan を自動生成
 self_update = true               # 起動時に自分自身を自動更新
-expected_remote = "(ユーザー名)"     # この文字列がリモートURLに無ければ警告
+expected_remote = "(あなたのGitHubユーザー名)"     # この文字列がリモートURLに無ければ警告
+auto_tag = false                 # Push成功後にバージョンタグ作成を促すか
 
 # v1.2.0 新機能
 scan_secrets = true             # ソース内の秘密リテラルをスキャン
@@ -129,10 +130,11 @@ log_file = "gitpush.log"        # ログ出力先 (空=出力しない)
 1. **pre-commit フック登録** — `.env` やトークン (`ghp_...`) がコミットされようとしたらブロック
 2. **CI ワークフロー生成** — `.github/workflows/secret-scan.yml` を作成（gitleaks でプッシュ時に秘密をスキャン）
 3. **リモート警告** — `expected_remote` と異なるリモートへ push しようとすると警告
-4. **自己更新** — 起動時に GitHub 上の最新版と比較し、新しければ更新を提案（`update_channel` で stable/beta 選択）
-5. **秘密スキャン** — ソース内リテラル / 機密ファイル / 過去履歴（設定で切替）をスキャン
-6. **マルチリモート push** — `extra_remotes` に列挙したリモートへ一斉 push
-7. **ログ出力** — `log_file` に実行履歴を追記
+4. **自己更新** — 起動時に最新版と比較し、警告を表示（`gitpush update` で更新可能）
+5. **自動タグ付け** — `auto_tag = true` の場合、Push成功時にセマンティックバージョニング（v1.0.0等）のタグ付けとPushを提案
+6. **秘密スキャン** — ソース内リテラル / 機密ファイル / 過去履歴（設定で切替）をスキャン
+7. **マルチリモート push** — `extra_remotes` に列挙したリモートへ一斉 push
+8. **ログ出力** — `log_file` に実行履歴を追記
 
 ### グローバル設定
 

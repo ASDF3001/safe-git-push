@@ -106,7 +106,8 @@ default_branch = "main"          # default branch name
 auto_hook = true                 # auto-register pre-commit hook
 auto_ci = true                   # auto-generate GitHub Actions secret-scan
 self_update = true               # self-update check on launch
-expected_remote = "ASDF3001"     # warn if remote URL lacks this string
+expected_remote = "(your_username)"     # warn if remote URL lacks this string
+auto_tag = false                 # Prompt to create a version tag after successful push
 
 # v1.2.0 new features
 scan_secrets = true             # scan source for secret literals
@@ -127,7 +128,8 @@ Automatically performed:
 1. **pre-commit hook** — blocks commits containing `.env` or tokens (`ghp_...`)
 2. **CI workflow** — creates `.github/workflows/secret-scan.yml` (gitleaks scans secrets on push)
 3. **Remote warning** — warns if pushing to a remote not matching `expected_remote`
-4. **Self-update** — compares with the latest GitHub version on launch (`update_channel` picks stable/beta)
+4. **Self-update** — compares with the latest GitHub version on launch and warns if an update is available (use `gitpush update`)
+5. **Auto-tagging** — if `auto_tag = true`, prompts to create and push a semantic version tag (e.g. v1.0.0) after pushing
 5. **Secret scanning** — scans source literals / secret files / history (toggle in config)
 6. **Multi-remote push** — pushes to every remote listed in `extra_remotes`
 7. **Logging** — appends run history to `log_file`

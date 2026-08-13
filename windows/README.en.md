@@ -77,11 +77,14 @@ Menus: pick by number, `q` cancels/exits. `q` does not respond in y/N prompts or
    - ✅ `workflow` (**required** to push `.github/workflows/*.yml`; without it, push is rejected)
 5. Generate token, copy `ghp_...`
 
-The tool **prompts for the token on every run** (environment variables and saved values are not used). The entered token is saved only to **`~/.config/gitpush.toml` (outside the project)**, never to the project's `gitpush.toml` (so the pre-commit hook won't flag it). `gh` auto-creation also uses this entered token, so `gh auth login` is not required.
+The tool **prompts for the token on every run** (environment variables and saved values are not used). 
 
-> 💡 Forgetting the `workflow` scope causes push to be rejected with
-> `refusing to allow a Personal Access Token to create or update workflow ... without 'workflow' scope`.
-> Add `workflow` to the token, or set `auto_ci = false`.
+## About Updating
+
+You can easily update the tool to the latest version by running the `gitpush update` command.
+If a new version is detected upon launch, a warning will be displayed. When you see this, run the command to update.
+
+If you want to update manually or if the command fails, you can run `git pull` on this repository again or re-run the installer (`install.ps1`) to overwrite the existing scripts.
 
 ## Advanced features (automation)
 
@@ -96,15 +99,16 @@ default_branch = "main"
 auto_hook = true
 auto_ci = true
 self_update = true
-expected_remote = "ASDF3001"
+expected_remote = "(your_username)"     # warn if remote URL lacks this string
+auto_tag = false                 # Prompt to create a version tag after successful push
 ```
 
 Automatically performed:
 
 1. **pre-commit hook** — blocks commits with `.env` or tokens
 2. **CI workflow** — `.github/workflows/secret-scan.yml` (gitleaks)
-3. **Remote warning** — warns on unexpected remote push
-4. **Self-update** — compares with latest version on launch
+3. **Remote warning** — warns if pushing to a remote not matching `expected_remote`
+4. **Self-update** — compares with the latest GitHub version on launch and warns if an update is available (use `gitpush update`)
+5. **Auto-tagging** — if `auto_tag = true`, prompts to create and push a semantic version tag (e.g. v1.0.0) after pushing
 
 The exe also reads `gitpush.toml` (placed next to the exe or in the current directory).
-

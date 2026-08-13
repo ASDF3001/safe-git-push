@@ -147,6 +147,12 @@ TEXTS = {
         "repo_list_empty": "既存リポジトリが見つかりません（0 で新規作成）",
         "repo_list_failed": "リポジトリ一覧の取得に失敗しました（新規作成または URL 手入力）",
         "menu_select_quit": "q で終了",
+        "tag_prompt": "バージョンタグを作成してプッシュしますか？",
+        "tag_opt_patch": "Patch (バグ修正等)",
+        "tag_opt_minor": "Minor (機能追加等)",
+        "tag_opt_major": "Major (大規模な変更)",
+        "tag_created": "タグを作成してプッシュしました",
+        "tag_failed": "タグの作成/プッシュに失敗しました",
     },
     "en": {
         "title": "Welcome to Safe Git Push!",
@@ -233,6 +239,12 @@ TEXTS = {
         "repo_list_empty": "No existing repos found (0 to create new)",
         "repo_list_failed": "Failed to list repos (create new or enter URL manually)",
         "menu_select_quit": "q to quit",
+        "tag_prompt": "Create and push a version tag?",
+        "tag_opt_patch": "Patch (Bug fixes)",
+        "tag_opt_minor": "Minor (New features)",
+        "tag_opt_major": "Major (Breaking changes)",
+        "tag_created": "Tag created and pushed successfully",
+        "tag_failed": "Failed to push tag",
     }
 }
 
@@ -398,6 +410,7 @@ def load_config(project_dir: Path, t: Dict[str, str]) -> Dict[str, object]:
         "update_channel": "stable",        # stable | beta
         "provider": "github",              # github | gitlab
         "log_file": "gitpush.log",         # ログ出力先 (空なら出力しない)
+        "auto_tag": False,                 # Push成功後にセマンティックバージョニングのタグを打つか
     }
     if not cfg_path.exists():
         print_info(t["config_not_found"])
@@ -446,6 +459,7 @@ CONFIG_SCHEMA: Dict[str, Dict[str, object]] = {
     "update_channel": {"type": str, "choices": ["stable", "beta"]},
     "provider": {"type": str, "choices": ["github", "gitlab"]},
     "log_file": {"type": str},
+    "auto_tag": {"type": bool},
 }
 
 
@@ -1214,6 +1228,56 @@ def git_push(project_dir: Path, branch_name: str, t: Dict[str, str], extra_remot
 
 
 # ============================================================================
+# Auto-tagging (Semantic Versioning)
+# ============================================================================
+def get_latest_tag(project_dir: Path) -> str:
+    code, out, _ = run_command(["git", "tag", "--sort=-v:refname"], cwd=project_dir, capture=True)
+    if code == 0 and out.strip():
+        import re
+        for line in out.splitlines():
+            m = re.match(r"^v?(\d+)\.(\d+)\.(\d+)$", line.strip())
+            if m:
+                return line.strip()
+    return "v0.0.0"
+
+def create_semantic_tag(project_dir: Path, t: Dict[str, str]) -> None:
+    latest = get_latest_tag(project_dir)
+    import re
+    m = re.match(r"^(v?)(\d+)\.(\d+)\.(\d+)$", latest)
+    prefix = m.group(1) if m else "v"
+    major = int(m.group(2)) if m else 0
+    minor = int(m.group(3)) if m else 0
+    patch = int(m.group(4)) if m else 0
+
+    opts = [
+        f"{t.get('tag_opt_patch', 'Patch')} (-> {prefix}{major}.{minor}.{patch+1})",
+        f"{t.get('tag_opt_minor', 'Minor')} (-> {prefix}{major}.{minor+1}.0)",
+        f"{t.get('tag_opt_major', 'Major')} (-> {prefix}{major+1}.0.0)",
+    ]
+    
+    print_divider(thin=True)
+    idx = menu_select(opts, default_idx=0, title=t.get("tag_prompt", "Create version tag?"), t=t, allow_quit=True)
+    if not idx:
+        return
+
+    if idx == 1:
+        new_tag = f"{prefix}{major}.{minor}.{patch+1}"
+    elif idx == 2:
+        new_tag = f"{prefix}{major}.{minor+1}.0"
+    else:
+        new_tag = f"{prefix}{major+1}.0.0"
+
+    print_step(f"Creating tag {new_tag}...")
+    run_command(["git", "tag", new_tag], cwd=project_dir)
+    
+    code, _, err = run_command(["git", "push", "origin", new_tag], cwd=project_dir, capture=True)
+    if code == 0:
+        print_success(t.get("tag_created", f"Tag {new_tag} pushed!"))
+    else:
+        print_error(t.get("tag_failed", f"Failed to push tag: {err.strip()}"))
+
+
+# ============================================================================
 # Main Workflow
 # ============================================================================
 def select_language() -> str:
@@ -1296,6 +1360,7 @@ def main():
     scan_history_enabled = cfg.get("scan_history", False)
     check_gitignore_gap_enabled = cfg.get("check_gitignore_gap", True)
     dry_run_enabled = cfg.get("dry_run", True)
+    auto_tag_enabled = cfg.get("auto_tag", False)
     log_lines = []
 
     # 1. Ensure .gitignore
@@ -1445,8 +1510,12 @@ def main():
         sys.exit(1)
 
     print_divider()
-    print(f"{Neon.SUCCESS}{t['done']}{Neon.RESET}")
+    print(f"{Neon.SUCCESS}✅ {t['done']}{Neon.RESET}")
     print_divider()
+
+    # 8.5 Auto Tagging
+    if auto_tag_enabled and not non_interactive:
+        create_semantic_tag(project_dir, t)
 
     # 9. Logging
     log_lines.append(f"[{datetime.datetime.now().isoformat()}] pushed {repo_name} -> {branch_name} (provider={provider}, channel={update_channel})")

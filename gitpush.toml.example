@@ -23,6 +23,9 @@ expected_remote = ""
 
 # ---- v1.2.0 新機能 / new features ----
 
+# Push成功後にセマンティックバージョニングのタグを打つか（v1.2.1 など）
+auto_tag = false
+
 # ソースコード内の秘密リテラル（ghp_... 等）をスキャンするか
 scan_secrets = true
 

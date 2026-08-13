@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Safe Git Push - インストーラー / Installer
 # 使い方 / Usage:
-#   curl -fsSL https://raw.githubusercontent.com/ASDF3001/safe-git-push/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/ASDF3001/safe-git-push/main/linux/install.sh | bash
 #
 # やること / What it does:
 #   1. ~/git-push-tool/safe_git_push.py をダウンロード
@@ -31,9 +31,9 @@ mkdir -p "$INSTALL_DIR"
 # 2. スクリプトダウンロード
 echo -e "${C_CYAN}safe_git_push.py を取得中...${C_RST}"
 if command -v curl >/dev/null 2>&1; then
-  curl -fsSL "$REPO_RAW/safe_git_push.py" -o "$SCRIPT_PATH"
+  curl -fsSL "$REPO_RAW/linux/safe_git_push.py" -o "$SCRIPT_PATH"
 elif command -v wget >/dev/null 2>&1; then
-  wget -qO "$SCRIPT_PATH" "$REPO_RAW/safe_git_push.py"
+  wget -qO "$SCRIPT_PATH" "$REPO_RAW/linux/safe_git_push.py"
 else
   echo -e "${C_RED}curl も wget も見つかりません。どちらかをインストールしてください。${C_RST}"
   exit 1

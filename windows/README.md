@@ -101,6 +101,13 @@ gitpush --yes --public --repo my-repo --message "Initial commit"
 > `refusing to allow a Personal Access Token to create or update workflow ... without 'workflow' scope`
 > で拒否されます。その場合はトークンに `workflow` を追加するか、`auto_ci = false` にしてください。
 
+## アップデートについて
+
+`gitpush update` コマンドを実行することで、最新版へのアップデートを行うことができます。
+起動時に新しいバージョンが見つかった場合は警告が表示されるので、その際にこのコマンドを実行してください。
+
+もし手動で更新したい場合やコマンドがうまく動かない場合は、再度リポジトリを `git pull` するか、最新のインストーラー（`install.ps1`）を再実行してスクリプトを上書きしてください。
+
 ## 高度な機能（自動化 / v1.2.0）
 
 設定はすべて `gitpush.toml`（プロジェクト + グローバル `~/.config/gitpush.toml`）で管理します。対話式の設定メニューは廃止しました。
@@ -114,7 +121,8 @@ default_branch = "main"
 auto_hook = true
 auto_ci = true
 self_update = true
-expected_remote = "ASDF3001"
+expected_remote = "(あなたのGitHubユーザー名)"     # この文字列がリモートURLに無ければ警告
+auto_tag = false                 # Push成功後にバージョンタグ作成を促すか
 
 # v1.2.0 新機能
 scan_secrets = true
@@ -134,11 +142,12 @@ log_file = "gitpush.log"
 
 1. **pre-commit フック登録** — `.env` やトークン (`ghp_...`) がコミットされるのをブロック
 2. **CI ワークフロー生成** — `.github/workflows/secret-scan.yml`（gitleaks）
-3. **リモート警告** — 予期しないリモートへの push を警告
-4. **自己更新** — 起動時に最新版と比較し更新を提案（`update_channel` で stable/beta）
-5. **秘密スキャン** — ソース内リテラル / 機密ファイル / 過去履歴
-6. **マルチリモート push** — `extra_remotes` に列挙したリモートへ一斉 push
-7. **ログ出力** — `log_file` に実行履歴を追記
+3. **リモート警告** — `expected_remote` と異なるリモートへ push しようとすると警告
+4. **自己更新** — 起動時に最新版と比較し、警告を表示（`gitpush update` で更新可能）
+5. **自動タグ付け** — `auto_tag = true` の場合、Push成功時にセマンティックバージョニング（v1.0.0等）のタグ付けとPushを提案
+6. **秘密スキャン** — ソース内リテラル / 機密ファイル / 過去履歴
+7. **マルチリモート push** — `extra_remotes` に列挙したリモートへ一斉 push
+8. **ログ出力** — `log_file` に実行履歴を追記
 
 ### グローバル設定
 
