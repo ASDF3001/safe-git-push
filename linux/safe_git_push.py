@@ -39,6 +39,7 @@ def ensure_colorama():
         )
     except subprocess.CalledProcessError:
         # --user が効かない環境（PEP 668 等）は --break-system-packages で再挑戦
+# break-system-packagesは結構権限ないと使えないはずなのでそこ注意
         try:
             subprocess.check_call(
                 [sys.executable, "-m", "pip", "install", "--quiet",
